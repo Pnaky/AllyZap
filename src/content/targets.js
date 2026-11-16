@@ -41,9 +41,13 @@ Object.assign(AlzaPriceTracker, {
   },
 
   // "Dosaženo – aktuálně …" / "Aktuálně …, chybí … (-x %)"; u cíle za kus v cenách za kus
-  getTargetStatus(target, lowest) {
+  // priceMap = aktuální ceny – dosažení jen díky cashbacku / výkupu dostane poznámku „s cashbackem“
+  getTargetStatus(target, lowest, priceMap = null) {
     if (lowest === null) return "";
-    if (lowest <= target.price) return this.translate("targetReached", this.formatTargetValue(lowest, target));
+    if (lowest <= target.price) {
+      const value = AlzaCore.withLaterRefundNote(this.state.uiLanguage || this.state.language || "cz", this.formatTargetValue(lowest, target), priceMap);
+      return this.translate("targetReached", value);
+    }
     const missing = lowest - target.price;
     const packCount = AlzaCore.getTargetPackCount(target);
     const missingText = packCount ? `${this.formatUnitPrice(missing / packCount)}/${this.translate("pieceUnit")}` : this.formatPrice(missing);
@@ -72,7 +76,8 @@ Object.assign(AlzaPriceTracker, {
 
   createTargetSection(product, entries, productData) {
     const target = this.state.targets[this.getProductKey(product.url)];
-    const lowest = AlzaCore.getLowestPrice(this.getCurrentPriceMap(entries, productData));
+    const currentPriceMap = this.getCurrentPriceMap(entries, productData);
+    const lowest = AlzaCore.getLowestPrice(currentPriceMap);
     const currency = this.state.currencySymbol;
     // Cíl za kus jde zadat, jen když známe počet kusů v balení
     const packCount = AlzaCore.getTargetPackCount(target) || this.getProductPackCount(product, productData);
@@ -112,7 +117,7 @@ Object.assign(AlzaPriceTracker, {
 
     const status = this.createEl("div", "alza-price-tracker-history-target-status");
     if (target && lowest !== null) {
-      status.textContent = this.getTargetStatus(target, lowest);
+      status.textContent = this.getTargetStatus(target, lowest, currentPriceMap);
       if (lowest <= target.price) status.classList.add("alza-price-tracker-history-target-status--reached");
     } else {
       status.textContent = this.translate(unitMode() ? "targetUnitHint" : "targetHint");
@@ -188,7 +193,7 @@ Object.assign(AlzaPriceTracker, {
     const lowest = AlzaCore.getLowestPrice(data.priceMap);
     const marker = AlzaIcons.prepend(this.createEl("span", "alza-price-tracker-target-marker alza-price-tracker-target-marker--icon"), "target", { tone: true });
     marker.title = `${this.translate("targetLabel")}: ${this.formatTargetValue(target.price, target)}`;
-    if (lowest !== null) marker.title += `\n${this.getTargetStatus(target, lowest)}`;
+    if (lowest !== null) marker.title += `\n${this.getTargetStatus(target, lowest, data.priceMap)}`;
     if (lowest !== null && lowest <= target.price) marker.classList.add("alza-price-tracker-target-marker--reached");
     // Terč vlevo, šipka hodnocení vždy těsně u ceny – ať jsou šipky v seznamu pod sebou; součet více kusů
     // (showQuantityTotal) zůstává úplně vlevo

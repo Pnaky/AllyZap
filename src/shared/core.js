@@ -25,9 +25,16 @@ const AlzaCore = {
   discountWarningMinPercent: 2, // Menší rozdíl (běžné kolísání o pár korun) se za podezřelou slevu nepovažuje
   typicalWindowDays: 180, // Obvyklá cena = medián prodejní ceny za toto období
   verdictMinDays: 14, // S kratší historií se obvyklá cena ani přeškrtnutá cena nehodnotí
+  // Jak dlouho po posledním potvrzení (s) cenu ze záznamu historie ještě známe (getEntryEnd). Hlídaný produkt se
+  // potvrzuje každou hodinu nebo denně, produkt z procházení jen při návštěvě – delší mezera do dalšího záznamu
+  // je díra v pozorování, ne známá cena
+  priceGapDays: 2,
+  saleBridgeDays: 7, // Díra v pozorování do této délky akci nerozdělí na dvě (getSaleRuns)
   // Stránka „Moje objednávky“ (stejná cesta na alza.cz, .sk i .hu) – odkaz u koupeného zboží v přehledu změn
   ordersPath: "/my-account/orders.htm",
   purchaseReturnDays: 14, // Hlídání po nákupu: zákonná lhůta pro vrácení zboží koupeného na internetu (od objednávky – opatrně)
+  emptyListSettleMs: 4000, // Prázdný seznam na stránce: po této době bez položek a s „(0)“ v záložce je opravdu prázdný
+  purchaseReferenceLateDays: 3, // Historie začínající později po nákupu už cenu z doby nákupu neurčuje (getPurchaseReferencePrice)
   purchaseSyncHours: 6, // Objednávky se načítají celé nejvýš jednou za tuto dobu
   purchaseProbeMinutes: 10, // Mezitím jen seznam aktivních objednávek – nová objednávka se načte hned (purchases.js)
   // Trezor kódů a přehled cashbacků (mergePrices): jen posun seenAt se zapisuje nejvýš jednou za tuto dobu
@@ -59,6 +66,9 @@ const AlzaCore = {
   vatCheckMaxAgeMs: 60 * 60 * 1000, // Ověření DPH z jiné stránky platí pro stránku bez znaku DPH (homepage) tak dlouho
   vatCheckRefreshMs: 10 * 60 * 1000, // Stejný výsledek ověření DPH se zapisuje nejvýš jednou za tuto dobu
   vatCompareMaxAgeDays: 7, // Pro porovnání cen s historií (stránka bez znaku DPH) jen nedávno uložené ceny
+  voucherSoonDays: 7, // Peněženka poukazů: první připomínka tolik dní před koncem platnosti, druhá poslední den
+  voucherAppliedRefreshMs: 60 * 60 * 1000, // „Uplatněný v košíku“ se zapisuje nejvýš jednou za tuto dobu
+  voucherUseWindowDays: 3, // Objednávka s poukazem nejvýš tolik dní po jeho uplatnění v košíku (označení „použitý“)
 
   // Klíče ve storage sdílené content scriptem, službou na pozadí, popupem a nastavením
   storageKeys: {
@@ -80,7 +90,12 @@ const AlzaCore = {
     // Hlídání po nákupu: koupené zboží z „Moje objednávky“ ve lhůtě pro vrácení (purchases.js → kontrola na pozadí):
     // { "<doména>_<id>": { url, domain, name, image, price, count, boughtAt, returnUntil, notifiedPrice? } }
     purchases: "alzaPurchases",
-    purchasesSync: "alzaPurchasesSync", // Načtení objednávek: { "<doména>": čas, "<doména>:probe": čas kontroly, "<doména>:mark": otisk }
+    // Načtení objednávek: { "<doména>": čas úplného načtení, "<doména>:probe": čas kontroly, "<doména>:mark": otisk
+    // aktivních objednávek, "<doména>:fails": neúplná načtení za sebou, "<doména>:account": otisk účtu (4 hex znaky),
+    // "<doména>:accountAt": kdy byl otisk naposledy potvrzen, "<doména>:accountBy": kdo ho potvrdil ("bg" = kontrola
+    // na pozadí, "page" = stránka Alzy), "<doména>:otherProbe": kdy stránka Alzy naposledy ukázala jiný účet,
+    // salt: sůl otisků účtu (i pro Moje nákupy) } – AlzaOrders v shared/orders.js
+    purchasesSync: "alzaPurchasesSync",
     // Cashback viděný na detailu produktu (AlzaStore.mergePrices, AlzaCore.updateCashbackRegistry):
     // { "<doména>_<id>": { terms, title, price, refund, domain, since, seenAt } } – terms = stránka akce na Alze
     cashbacks: "alzaCashbacks",
@@ -102,10 +117,28 @@ const AlzaCore = {
     owned: "alzaOwned",
     ownedOrders: "alzaOwnedOrders", // Objednávky s koupeným zbožím: { "<doména>": { "<číslo>": [čas, částka] } } – přehled výdajů
     // Načítání archivu: { "<doména>": { at (poslední načtení), offset (kam došlo první načtení), done (archiv načten celý), total,
-    // fails: { "<číslo objednávky>": počet nepovedených načtení detailu } } }
+    // fails: { "<číslo objednávky>": počet nepovedených načtení detailu }, account: otisk účtu, kterému nákupy domény patří } }
     ownedSync: "alzaOwnedSync",
+    // Moje nákupy jiných účtů Alzy, které se v tomto profilu vystřídaly (operace switchOwnedAccount ve store.js):
+    // { "<doména>:<otisk účtu>": { owned, orders, sync, at (kdy se odložily) } } – po návratu k účtu se jeho nákupy vrátí
+    // bez nového stahování. Číslo účtu se neukládá, jen otisk (AlzaOrders.accountTag)
+    ownedAccounts: "alzaOwnedAccounts",
     // Novinky po aktualizaci (průvodce #news, popup): { seen: "<verze>" } – nejnovější vydání, jehož novinky uživatel viděl
     news: "alzaNews",
+    // Peněženka poukazů – vlastní slevové kódy a dárkové poukazy, které uživatel dostal (nastavení „Kódy a poukazy“,
+    // nabídka v košíku – content/basket-vouchers.js): { "<id>": { code, domain, kind: "amount" | "percent", value,
+    //   minOrder?, until? (konec posledního dne platnosti), note?, addedAt, applied? (naposledy viděn uplatněný v košíku),
+    //   usedAt?, usedOrder? (číslo objednávky), notifiedSoon?, notifiedLast? } }
+    vouchers: "alzaVouchers",
+    // Poznámky k produktům (karta na detailu, dlaždice ve výpisech – listing-memory.js): { "<doména>_<id>": { text, url, domain, name, at } }
+    notes: "alzaNotes",
+    // Skryté produkty ve výpisech (listing-memory.js): { "<doména>_<id>": { url, domain, name, at } }
+    hidden: "alzaHidden",
+    // Skryté značky ve výpisech: { "<značka malými>": { name, at } } – AlzaCore.getBrandFromName
+    hiddenBrands: "alzaHiddenBrands",
+    // Spotřeba ze stránky produktu pro cenu provozu ve výpisech (televize, monitory – dlaždice ji nemá):
+    // { "<doména>_<id>": { kwh, per, at } | { none: true, at } } – plní detail produktu a „Spočítat provoz“ (category.js)
+    energy: "alzaEnergy",
   },
 
   // Klíče po produktech: "<prefix><doména>_<číslo produktu>" (getProductKey). Historie: [{ t, s, p, a, n? }],
@@ -138,6 +171,8 @@ const AlzaCore = {
     remindCashback: true, // Připomínka registrace cashbacku u koupeného zboží (potřebuje watchPurchases – objednávky)
     ownedItems: false, // Moje nákupy: načíst z archivu objednávek všechno koupené (záložka v nastavení, štítek na detailu) – zapíná uživatel
     remindWarranty: true, // Připomenout konec záruky u dražšího zboží (potřebuje ownedItems)
+    remindVouchers: true, // Připomenout poukaz z peněženky před koncem platnosti (storageKeys.vouchers)
+    monthlyBudget: 0, // Měsíční rozpočet na hlavní Alze v její měně (0 = vypnuto) – stav v košíku z výdajů v Mých nákupech
     saveBrowsing: true, // Ukládat ceny produktů viděných při procházení – výpisy (browsing.js) i detail
     uiLanguage: "auto", // Jazyk popupu a nápovědy: auto = podle prohlížeče, jinak cs / sk / hu / en
     primaryDomain: "auto", // Hlavní Alza (průvodce – ověření přihlášení a DPH, odkazy): auto = podle jazyka, jinak alza_cz / alza_sk / alza_hu
@@ -147,7 +182,10 @@ const AlzaCore = {
   // skutečnou – docs/vydani.md), settings = nové volby: průvodce (#news) je ukáže zeleně a po aktualizaci se sám
   // otevře jen u vydání s novou volbou; jinak jen značka Novinky v popupu. Odrážky jsou v RELEASE_NEWS
   // (src/welcome/welcome-texts.js); úplnost hlídá tests/welcome.test.js
-  releases: [{ version: "2026.11.12", settings: ["ownedItems", "remindWarranty", "energyCost"] }],
+  releases: [
+    { version: "2026.11.16", settings: ["remindVouchers"] },
+    { version: "2026.11.12", settings: ["ownedItems", "remindWarranty", "energyCost"] },
+  ],
 
   // Porovnání verzí "RRRR.M.D(.N)" po číslech: záporné = a je starší. Chybějící část je 0 (2026.11.12 < 2026.11.12.1)
   compareVersions(a, b) {
@@ -207,13 +245,13 @@ const AlzaCore = {
     alza_hu: [{ id: "arukereso", name: "Árukereső", url: "https://www.arukereso.hu/CategorySearch.php?st={q}", icon: "https://static.arukereso.hu/hu/favicon/favicon-32x32.png" }],
   },
 
-  // Štítek na horní hraně lišt nad nákupním seznamem a výpisem kategorie (logo + „Price Insight“) – lišta vypadá jako
+  // Štítek na horní hraně lišt nad nákupním seznamem a výpisem kategorie (logo + „AllyZap“) – lišta vypadá jako
   // box Alzy, ale je jasné, že je z rozšíření. Logo je v css/main.css (data URI, bez web_accessible_resources)
   createToolbarLogo(doc) {
     const logo = doc.createElement("span");
     logo.className = "alza-price-tracker-toolbar-logo";
-    logo.title = "Alza Price Insight";
-    logo.textContent = "Price Insight";
+    logo.title = "AllyZap";
+    logo.textContent = "AllyZap";
     return logo;
   },
 
@@ -238,6 +276,8 @@ const AlzaCore = {
       type_discount: "Slevový kód",
       type_scrappage: "Výkup",
       type_cashback: "Cashback",
+      priceWith_cashback: "{0} s cashbackem",
+      priceWith_scrappage: "{0} s výkupem",
       type_applus: "AlzaPlus+",
       type_benefit: "Benefit",
       type_b2b: "B2B",
@@ -247,13 +287,16 @@ const AlzaCore = {
       notifyPriceRise: "{0}: {1} → {2} (+{3}, +{4} %)",
       notifyNewPrice: "Nově {0}: {1}",
       notifyNewCode: "Nový slevový kód {0}: {1}",
-      notifyPurchaseDrop: "Koupili jste za {0}, teď stojí {1}. Do {2} ho můžete vrátit a koupit znovu.",
+      notifyPurchaseDrop: "Koupili jste za {0}, teď stojí {1}. Vrátit a koupit znovu ho můžete nejméně do {2}.",
       purchaseOrdersLink: "Objednávky", // Odkaz u změny koupeného zboží (popup) – stránka Moje objednávky
       notifyCashbackOpen: "Cashback až {0}: nákup zaregistrujte u výrobce do {1}. Kliknutím otevřete podmínky akce.",
       notifyCashbackOpenNoAmount: "Cashback: nákup zaregistrujte u výrobce do {0}. Kliknutím otevřete podmínky akce.",
       notifyCashbackOpenNoDate: "Cashback až {0}: nezapomeňte nákup zaregistrovat u výrobce – lhůtu najdete v podmínkách akce (po kliknutí).",
       notifyCashbackSoon: "Registrace cashbacku až {0} končí {1} – máte nákup zaregistrovaný?",
       notifyWarrantyEnding: "Záruka končí kolem {0} (koupeno {1}). Vyzkoušejte, jestli vše funguje, dokud jde zboží reklamovat.",
+      notifyVoucherTitle: "Poukaz {0} ({1})",
+      notifyVoucherSoon: "Platí do {0} – zbývá {1}. Kliknutím otevřete košík, poukaz v něm nabídneme k vložení.",
+      notifyVoucherLast: "Platí jen do {0}! Kliknutím otevřete košík, poukaz v něm nabídneme k vložení.",
       notifyAvailability: "{0} → {1}",
       notifyTargetReached: "Cílová cena {0} – nyní {1}",
       suspiciousGap: "{0} {1} je pod polovinou další ceny {2} – možná chyba načtení, ověřte na Alze",
@@ -270,6 +313,8 @@ const AlzaCore = {
       errorNotJson: "odpověď není JSON (nepřihlášen?)",
       errorUnexpected: "neočekávaná odpověď",
       errorOrders: "objednávky se nepodařilo načíst",
+      errorNotLoggedIn: "nejste na Alze přihlášeni",
+      errorBadOrder: "neplatná objednávka",
       errorArchive: "archiv objednávek má neznámý tvar",
       errorTimeout: "vypršel čas",
       notifyProblemNotLogged: "Nejste přihlášeni na Alze – ceny se neukládají, kontrola přerušena",
@@ -291,6 +336,8 @@ const AlzaCore = {
       type_discount: "Zľavový kód",
       type_scrappage: "Výkup",
       type_cashback: "Cashback",
+      priceWith_cashback: "{0} s cashbackom",
+      priceWith_scrappage: "{0} s výkupom",
       type_applus: "AlzaPlus+",
       type_benefit: "Benefit",
       type_b2b: "B2B",
@@ -300,13 +347,16 @@ const AlzaCore = {
       notifyPriceRise: "{0}: {1} → {2} (+{3}, +{4} %)",
       notifyNewPrice: "Novo {0}: {1}",
       notifyNewCode: "Nový zľavový kód {0}: {1}",
-      notifyPurchaseDrop: "Kúpili ste za {0}, teraz stojí {1}. Do {2} ho môžete vrátiť a kúpiť znova.",
+      notifyPurchaseDrop: "Kúpili ste za {0}, teraz stojí {1}. Vrátiť a kúpiť znova ho môžete najmenej do {2}.",
       purchaseOrdersLink: "Objednávky", // Odkaz u změny koupeného zboží (popup) – stránka Moje objednávky
       notifyCashbackOpen: "Cashback až {0}: nákup zaregistrujte u výrobcu do {1}. Kliknutím otvoríte podmienky akcie.",
       notifyCashbackOpenNoAmount: "Cashback: nákup zaregistrujte u výrobcu do {0}. Kliknutím otvoríte podmienky akcie.",
       notifyCashbackOpenNoDate: "Cashback až {0}: nezabudnite nákup zaregistrovať u výrobcu – lehotu nájdete v podmienkach akcie (po kliknutí).",
       notifyCashbackSoon: "Registrácia cashbacku až {0} končí {1} – máte nákup zaregistrovaný?",
       notifyWarrantyEnding: "Záruka končí okolo {0} (kúpené {1}). Vyskúšajte, či všetko funguje, kým sa dá tovar reklamovať.",
+      notifyVoucherTitle: "Poukaz {0} ({1})",
+      notifyVoucherSoon: "Platí do {0} – zostáva {1}. Kliknutím otvoríte košík, poukaz v ňom ponúkneme na vloženie.",
+      notifyVoucherLast: "Platí už len do {0}! Kliknutím otvoríte košík, poukaz v ňom ponúkneme na vloženie.",
       notifyAvailability: "{0} → {1}",
       notifyTargetReached: "Cieľová cena {0} – teraz {1}",
       suspiciousGap: "{0} {1} je pod polovicou ďalšej ceny {2} – možno chyba načítania, overte na Alze",
@@ -322,6 +372,8 @@ const AlzaCore = {
       errorNotJson: "odpoveď nie je JSON (neprihlásený?)",
       errorUnexpected: "neočakávaná odpoveď",
       errorOrders: "objednávky sa nepodarilo načítať",
+      errorNotLoggedIn: "nie ste na Alze prihlásení",
+      errorBadOrder: "neplatná objednávka",
       errorArchive: "archív objednávok má neznámy tvar",
       errorTimeout: "vypršal čas",
       notifyProblemNotLogged: "Nie ste prihlásený na Alze – ceny sa neukladajú, kontrola prerušená",
@@ -343,6 +395,8 @@ const AlzaCore = {
       type_discount: "Kuponkód",
       type_scrappage: "Beszámítás",
       type_cashback: "Cashback",
+      priceWith_cashback: "{0} cashbackkel",
+      priceWith_scrappage: "{0} beszámítással",
       type_applus: "AlzaPlus+",
       type_benefit: "Benefit",
       type_b2b: "B2B",
@@ -352,13 +406,16 @@ const AlzaCore = {
       notifyPriceRise: "{0}: {1} → {2} (+{3}, +{4} %)",
       notifyNewPrice: "Új {0}: {1}",
       notifyNewCode: "Új kuponkód: {0} – {1}",
-      notifyPurchaseDrop: "{0}-ért vásárolta, most {1}. {2}-ig visszaküldheti és újra megveheti.",
+      notifyPurchaseDrop: "{0}-ért vásárolta, most {1}. Legalább {2}-ig visszaküldheti és újra megveheti.",
       purchaseOrdersLink: "Rendelések", // Odkaz u změny koupeného zboží (popup) – stránka Moje objednávky
       notifyCashbackOpen: "Akár {0} cashback: regisztrálja a vásárlást a gyártónál, határidő: {1}. Kattintson az akció feltételeiért.",
       notifyCashbackOpenNoAmount: "Cashback: regisztrálja a vásárlást a gyártónál, határidő: {0}. Kattintson az akció feltételeiért.",
       notifyCashbackOpenNoDate: "Akár {0} cashback: ne felejtse el regisztrálni a vásárlást a gyártónál – a határidő az akció feltételeiben van (kattintásra).",
       notifyCashbackSoon: "Akár {0} cashback: a regisztráció határideje {1} – regisztrálta már a vásárlást?",
       notifyWarrantyEnding: "A jótállás {0} körül lejár (vásárlás: {1}). Próbálja ki, hogy minden működik-e, amíg még reklamálható.",
+      notifyVoucherTitle: "Kupon: {0} ({1})",
+      notifyVoucherSoon: "{0}-ig érvényes – még {1}. Kattintson a kosár megnyitásához, ott felajánljuk a beváltását.",
+      notifyVoucherLast: "Csak {0}-ig érvényes! Kattintson a kosár megnyitásához, ott felajánljuk a beváltását.",
       notifyAvailability: "{0} → {1}",
       notifyTargetReached: "Célár {0} – most {1}",
       suspiciousGap: "{0} {1} a következő ár ({2}) felénél is kevesebb – lehet, hogy beolvasási hiba, ellenőrizze az Alzán",
@@ -374,6 +431,8 @@ const AlzaCore = {
       errorNotJson: "a válasz nem JSON (nincs bejelentkezve?)",
       errorUnexpected: "váratlan válasz",
       errorOrders: "a rendeléseket nem sikerült betölteni",
+      errorNotLoggedIn: "nincs bejelentkezve az Alzára",
+      errorBadOrder: "érvénytelen rendelés",
       errorArchive: "a rendelések archívuma ismeretlen formátumú",
       errorTimeout: "időtúllépés",
       notifyProblemNotLogged: "Nincs bejelentkezve az Alzán – az árak nem kerülnek mentésre, ellenőrzés megszakítva",
@@ -395,6 +454,8 @@ const AlzaCore = {
       type_discount: "Discount code",
       type_scrappage: "Trade-in",
       type_cashback: "Cashback",
+      priceWith_cashback: "{0} with cashback",
+      priceWith_scrappage: "{0} with trade-in",
       type_applus: "AlzaPlus+",
       type_benefit: "Benefit",
       type_b2b: "B2B",
@@ -404,13 +465,16 @@ const AlzaCore = {
       notifyPriceRise: "{0}: {1} → {2} (+{3}, +{4} %)",
       notifyNewPrice: "New {0}: {1}",
       notifyNewCode: "New discount code {0}: {1}",
-      notifyPurchaseDrop: "You bought it for {0}, now it costs {1}. You can return it and buy it again until {2}.",
+      notifyPurchaseDrop: "You bought it for {0}, now it costs {1}. You can return it and buy it again at least until {2}.",
       purchaseOrdersLink: "Orders", // Odkaz u změny koupeného zboží (popup) – stránka Moje objednávky
       notifyCashbackOpen: "Cashback up to {0}: register your purchase with the manufacturer by {1}. Click to open the promotion terms.",
       notifyCashbackOpenNoAmount: "Cashback: register your purchase with the manufacturer by {0}. Click to open the promotion terms.",
       notifyCashbackOpenNoDate: "Cashback up to {0}: don't forget to register your purchase with the manufacturer – the deadline is in the promotion terms (click).",
       notifyCashbackSoon: "Cashback up to {0}: registration ends {1} – have you registered your purchase?",
       notifyWarrantyEnding: "The warranty ends around {0} (bought {1}). Check that everything works while you can still make a claim.",
+      notifyVoucherTitle: "Voucher {0} ({1})",
+      notifyVoucherSoon: "Valid until {0} – {1} left. Click to open the cart, we will offer to apply it there.",
+      notifyVoucherLast: "Valid only until {0}! Click to open the cart, we will offer to apply it there.",
       notifyAvailability: "{0} → {1}",
       notifyTargetReached: "Target price {0} – now {1}",
       suspiciousGap: "{0} {1} is less than half of the next price {2} – possibly a reading error, check on Alza",
@@ -426,6 +490,8 @@ const AlzaCore = {
       errorNotJson: "the response is not JSON (not signed in?)",
       errorUnexpected: "unexpected response",
       errorOrders: "orders could not be loaded",
+      errorNotLoggedIn: "you are not signed in to Alza",
+      errorBadOrder: "invalid order",
       errorArchive: "the order archive has an unknown format",
       errorTimeout: "timed out",
       notifyProblemNotLogged: "You are not logged in to Alza – prices are not saved, check stopped",
@@ -448,6 +514,8 @@ const AlzaCore = {
     "odpověď není JSON (nepřihlášen?)": "errorNotJson",
     "neočekávaná odpověď": "errorUnexpected",
     "objednávky se nepodařilo načíst": "errorOrders",
+    nepřihlášen: "errorNotLoggedIn",
+    "neplatná objednávka": "errorBadOrder",
     "archiv objednávek má neznámý tvar": "errorArchive",
     timeout: "errorTimeout",
   },
@@ -827,6 +895,9 @@ const AlzaCore = {
   // Produkty navržené ke smazání ze snímku celého storage: nehlídané (seznam, detail, cílová cena) a déle
   // než staleDataDays bez kontroly – čas z historie i z uložených cen seznamu (otevřený seznam nebo detail
   // ho obnovuje); produkty uložené při procházení až po staleBrowsedDays.
+  // Za hlídané se bere i zboží z Mých nákupů koupené za posledních alzaPlusMonths měsíců (na jeho historii cen stojí
+  // Vyplatí se AlzaPlus+? a úspora proti běžné ceně) a zboží s neprošlou připomínkou registrace cashbacku
+  // (removeProducts by ji smazal s ním).
   // [{ key, historyKey, priceKey, browsed, checkedAt }]
   findStaleProducts(all, now = Date.now()) {
     const cutoff = now - this.staleDataDays * this.dayMs;
@@ -836,6 +907,13 @@ const AlzaCore = {
     Object.values(all[this.storageKeys.watchLists] || {}).forEach((list) =>
       Object.keys(list?.products || {}).forEach((url) => tracked.add(this.getProductKey(list?.domain, url)))
     );
+    const boughtSince = this.addMonths(now, -this.alzaPlusMonths);
+    Object.entries(all[this.storageKeys.owned] || {}).forEach(([key, product]) => {
+      if (Array.isArray(product?.buys) && product.buys.some((buy) => !buy?.ret && buy?.t >= boughtSince)) tracked.add(key);
+    });
+    Object.entries(all[this.storageKeys.cashbackReminders] || {}).forEach(([key, reminder]) => {
+      if (this.getCashbackReminderStep(reminder, now) !== "expired") tracked.add(key);
+    });
 
     const products = new Map();
     const get = (key) => {
@@ -902,11 +980,15 @@ const AlzaCore = {
     // z incoming vyber všechny číselné ceny (discount/special/benefit/b2b/original/…),
     // meta klíče ignorujeme
     const numericValues = [];
+    const payNowValues = []; // Bez cashbacku a výkupu – pro prodejní maximum
     for (const [k, v] of Object.entries(incoming)) {
       if (keepKeys.has(k)) continue;
       const n = typeof v === "object" && v !== null && "price" in v ? v.price : v;
       const num = toNumber(n);
-      if (Number.isFinite(num)) numericValues.push(num);
+      if (Number.isFinite(num)) {
+        numericValues.push(num);
+        if (!this.laterRefundTypes.includes(k)) payNowValues.push(num);
+      }
     }
 
     // aktualizace historického min/max pouze pokud máme nové číselné ceny
@@ -919,9 +1001,11 @@ const AlzaCore = {
       const currentMin = toNumber(record.minPrice?.value);
       const currentMax = toNumber(record.maxPrice?.value);
 
-      // MIN – přepiš jen když je NOVĚ menší než dosavadní (bez nesmyslně nízkých cen, viz getPlausibleLowest)
-      if (!Number.isFinite(currentMin) || plausibleMin < currentMin) {
-        record.minPrice = { value: plausibleMin, timestamp: now };
+      // MIN – přepiš jen když je NOVĚ menší než dosavadní (bez nesmyslně nízkých cen, viz getPlausibleLowest,
+      // a bez cashbacku a výkupu – platí jen za podmínek)
+      const plausiblePayNow = payNowValues.length > 0 ? this.getPlausibleLowest(payNowValues) : null;
+      if (plausiblePayNow !== null && (!Number.isFinite(currentMin) || plausiblePayNow < currentMin)) {
+        record.minPrice = { value: plausiblePayNow, timestamp: now };
       }
 
       // MAX – přepiš jen když je NOVĚ větší než dosavadní
@@ -929,17 +1013,19 @@ const AlzaCore = {
         record.maxPrice = { value: newMax, timestamp: now };
       }
 
-      // PRODEJNÍ MAX – nejvyšší z nejnižších cen, tj. nejvíc, za kolik šel produkt reálně koupit
-      // (maxPrice bývá ceníková cena, za kterou se s benefitem/kódem nekupuje)
+      // PRODEJNÍ MAX – nejvyšší z nejnižších cen k zaplacení, tj. nejvíc, za kolik šel produkt reálně koupit
+      // (maxPrice bývá ceníková cena, za kterou se s benefitem/kódem nekupuje; cashback a výkup platí jen za podmínek)
       const currentMaxLowest = toNumber(record.maxLowestPrice?.value);
-      if (!Number.isFinite(currentMaxLowest) || plausibleMin > currentMaxLowest) {
-        record.maxLowestPrice = { value: plausibleMin, timestamp: now };
+      if (plausiblePayNow !== null && (!Number.isFinite(currentMaxLowest) || plausiblePayNow > currentMaxLowest)) {
+        record.maxLowestPrice = { value: plausiblePayNow, timestamp: now };
       }
 
       // Logika pro sledování změn ceny:
       // 1. Pokud existuje newLowestPrice z minulého fetch → přesuň do oldLowestPrice
       // 2. Pokud oldLowestPrice neexistuje (první uložení) → nastav ji
       // 3. Pokud se cena změnila → ulož do newLowestPrice (pro zobrazení šipky)
+      // Šipka sleduje cenu k zaplacení – nový cashback / výkup není zlevnění (jen když jiná cena není, cenu s ním)
+      const arrowPrice = plausiblePayNow ?? plausibleMin;
       const existingNewLowest = toNumber(record.newLowestPrice);
 
       if (Number.isFinite(existingNewLowest)) {
@@ -953,10 +1039,10 @@ const AlzaCore = {
 
       if (!Number.isFinite(currentOldLowest)) {
         // První uložení - nastav oldLowestPrice
-        record.oldLowestPrice = plausibleMin;
-      } else if (plausibleMin !== currentOldLowest) {
+        record.oldLowestPrice = arrowPrice;
+      } else if (arrowPrice !== currentOldLowest) {
         // Cena se změnila - ulož do newLowestPrice pro zobrazení šipky
-        record.newLowestPrice = plausibleMin;
+        record.newLowestPrice = arrowPrice;
       }
     }
 
@@ -966,6 +1052,45 @@ const AlzaCore = {
     }
     record.listId = listId ?? record.listId;
     return record;
+  },
+
+  // Oprava záznamu ceny uloženého před 2026.11.16 (jednorázová oprava v úložišti a import starší zálohy), kdy se
+  // historické minimum a šipka změny počítaly i s cashbackem a výkupem. Mění record, vrací true při změně.
+  //   minPrice – z historie produktu jen z cen k zaplacení (getPlausiblePayNowPrice), ale jen když historie dobu
+  //     minima pokrývá (začíná nejpozději v jeho čase; stejné pravidlo jako getHistoricExtreme v dialogu historie).
+  //     Starší minimum není čím ověřit – zůstává; jen je-li to právě cena s cashbackem / výkupem ze záznamu (pod jeho
+  //     cenou k zaplacení), nahradí ho cena k zaplacení ze záznamu (nic nižšího k zaplacení neznáme)
+  //   old/newLowestPrice – stojí-li poslední uložená nejnižší cena na cashbacku / výkupu, nastaví se cena
+  //     k zaplacení a šipka se zahodí (jinak by první načtení po opravě ukázalo „zdražení“ o výši cashbacku)
+  repairPayNowRecord(record, entries) {
+    if (!record || typeof record !== "object") return false;
+    let changed = false;
+    const stored = record.minPrice;
+    const prices = this.toPriceMap(record);
+    const payNow = this.getPlausiblePayNowPrice(prices);
+    const history = (Array.isArray(entries) ? entries : []).filter((entry) => Number.isFinite(entry?.t) && entry.p && typeof entry.p === "object");
+    if (Number.isFinite(stored?.value) && history.length > 0 && stored.timestamp >= history[0].t) {
+      let best = null;
+      history.forEach((entry) => {
+        const value = this.getPlausiblePayNowPrice(entry.p);
+        if (value !== null && (!best || value < best.value)) best = { value, timestamp: entry.t };
+      });
+      if (best && best.value !== stored.value) {
+        record.minPrice = best;
+        changed = true;
+      }
+    } else if (Number.isFinite(stored?.value) && payNow !== null && stored.value < payNow && this.laterRefundTypes.some((type) => prices[type] === stored.value)) {
+      record.minPrice = { value: payNow, timestamp: Number.isFinite(record.lastUpdated) ? record.lastUpdated : stored.timestamp };
+      changed = true;
+    }
+    const withRefund = this.getPlausibleMinPrice(prices);
+    const latest = Number.isFinite(record.newLowestPrice) ? record.newLowestPrice : record.oldLowestPrice;
+    if (payNow !== null && withRefund !== null && withRefund < payNow && latest === withRefund) {
+      record.oldLowestPrice = payNow;
+      delete record.newLowestPrice;
+      changed = true;
+    }
+    return changed;
   },
 
   // Pokles pod 1 % s desetinným místem, pod 0,1 % s jednou platnou číslicí – "-0 %" u malé slevy mate
@@ -1233,6 +1358,10 @@ const AlzaCore = {
       } else if (isNormalPriceBox && specialPrice !== null && !originalPrice) {
         // Normal price box without compare price and without header - use it as original
         specialPrices = { original: specialPrice };
+      } else if (specialPrice !== null && originalPrice && specialPrice < originalPrice) {
+        // Hlavní cena pod přeškrtnutou, ale bez nadpisu akce – platí hlavní cena (jinak by se jako aktuální uložila
+        // vyšší přeškrtnutá). Stejně ve výpisu (extractPricesFromListingItem) – typy cen musí sedět s detailem
+        specialPrices = { special: specialPrice };
       }
     }
 
@@ -1360,7 +1489,8 @@ const AlzaCore = {
     const result = [];
     (entries || []).forEach((entry) => {
       const prev = result[result.length - 1];
-      if (prev && prev.a === entry.a && this.isSamePriceMap(prev.p, entry.p)) {
+      // Přes díru ve sledování (isHistoryGap) se neslučuje – stejná cena po dlouhé pauze není souvislé sledování
+      if (prev && prev.a === entry.a && this.isSamePriceMap(prev.p, entry.p) && !this.isHistoryGap(prev, entry.t)) {
         prev.s = Math.max(prev.s, entry.s);
       } else {
         result.push({ ...entry });
@@ -1456,6 +1586,20 @@ const AlzaCore = {
     return values.length > 0 ? Math.min(...values) : null;
   },
 
+  // Nejnižší cena platí jen s cashbackem / výkupem (cena k zaplacení je vyšší): jeho typ, jinak null
+  getLaterRefundType(priceMap) {
+    const lowest = this.getLowestPrice(priceMap);
+    const payNow = this.getPayNowPrice(priceMap);
+    if (lowest === null || (payNow !== null && payNow <= lowest)) return null;
+    return this.laterRefundTypes.find((type) => priceMap[type] === lowest) ?? null;
+  },
+
+  // Cena s poznámkou „s cashbackem“ / „s výkupem“, když platí jen s ním (getLaterRefundType)
+  withLaterRefundNote(lang, text, priceMap) {
+    const type = this.getLaterRefundType(priceMap);
+    return type ? this.translate(lang, `priceWith_${type}`, text) : text;
+  },
+
   // Běžná cena se přeškrtne, jen když jde opravdu zaplatit míň (benefit, AlzaPlus+, kód, akce). Cashback a výkup
   // platí jen za podmínek (registrace, odevzdání starého zařízení) a peníze se vrací až potom – běžná cena dál platí
   isOriginalSuperseded(priceMap) {
@@ -1501,9 +1645,11 @@ const AlzaCore = {
   // Objednávka s jediným zbožím: záporné řádky (slevový kód je zvláštní řádek objednávky) se odečtou od ceny –
   // kromě těch, které jen ruší cenu služby (doprava 69 + sleva na dopravné −69). S víc zbožím jen procentní sleva
   // k položce, kterou jde jednoznačně přiřadit podle částky (parseOrderDiscountPercent).
+  // Dárkový šek („Sleva na zboží – dárkový šek“) je platba, ne sleva – cenu kusu nesnižuje (giftVoucherLine).
   // Vrácené zboží (stav položky, banner „Produkt byl vrácen“, dobropis) se nevrací – hlídání po nákupu by u něj dál
   // radilo „vraťte a kupte znovu“. includeReturned = i s ním (Moje nákupy potřebují jeho cenu, aby ji odečetly
   // z výdajů; části-dobropisy si vynechají samy)
+  giftVoucherLine: /dárkov|darčekov|ajándék|gift/i, // Řádek objednávky s dárkovým šekem (stejný vzor jako matchVoucherUses)
   parseOrderPurchases(detail, domainKey, { includeReturned = false } = {}) {
     const origin = this.domains[domainKey]?.origin;
     const result = [];
@@ -1564,6 +1710,8 @@ const AlzaCore = {
     items.forEach((item) => {
       const line = lineOf(item);
       if (!line?.negative) return;
+      // Dárkový šek je způsob platby – zboží stálo stejně, jen se část zaplatila šekem
+      if (this.giftVoucherLine.test(String(item?.commodityName || ""))) return;
       const service = services.findIndex((total) => Math.abs(total - line.total) < 0.01);
       if (service >= 0) services.splice(service, 1);
       else discounts.push({ total: line.total, name: String(item?.commodityName || ""), percent: this.parseOrderDiscountPercent(item?.commodityName) });
@@ -1971,8 +2119,20 @@ const AlzaCore = {
   // skutečné zlevnění od nákupu. Prázdná historie = cenu z doby nákupu neznáme → nic; bez historie (null) jen
   // proti ceně z objednávky. { lowest, saving, reference } (reference = cena, proti které se srovnává) nebo null
   getPurchaseDrop(purchase, priceMap, now = Date.now(), historyEntries = null) {
+    // Víc nákupů téhož zboží (buys z AlzaOrders.sync): každý zvlášť, platí ten, který jde ještě vrátit a ušetří nejvíc –
+    // cena, čas nákupu i lhůta z téže objednávky
+    if (Array.isArray(purchase?.buys) && purchase.buys.length > 1) {
+      let best = null;
+      purchase.buys.forEach((buy) => {
+        const single = { ...purchase, buys: null, price: buy?.price, boughtAt: buy?.boughtAt, returnUntil: buy?.returnUntil };
+        const drop = this.getPurchaseDrop(single, priceMap, now, historyEntries);
+        if (drop && (!best || drop.saving > best.saving)) best = { ...drop, returnUntil: single.returnUntil };
+      });
+      return best;
+    }
     if (!purchase || !(purchase.price > 0) || !(purchase.returnUntil > now)) return null;
-    const lowest = this.getPayNowPrice(priceMap) ?? this.getLowestPrice(priceMap);
+    // Jen cena k zaplacení – cashback / výkup bez ní není cena, za kterou jde zboží znovu koupit
+    const lowest = this.getPayNowPrice(priceMap);
     let reference = purchase.price;
     if (Array.isArray(historyEntries) && Number.isFinite(purchase.boughtAt)) {
       const atPurchase = this.getPurchaseReferencePrice(historyEntries, purchase.boughtAt);
@@ -1985,20 +2145,26 @@ const AlzaCore = {
   },
 
   // Nejnižší cena k zaplacení z historie kolem nákupu: stavy platné kdykoli den před nákupem až do nákupu; když
-  // historie začíná až po nákupu, první známá cena po něm. Ze záznamů do dne po nákupu se přidá jen cena s kupónem
-  // (kód, AlzaPlus+ – výpis je neukazuje všechny, detail je najde až další kontrolou), ne nová akční cena – ta je
-  // skutečné zlevnění po nákupu. null = v historii žádná cena
+  // historie začíná až po nákupu, první známá cena po něm – jen do purchaseReferenceLateDays (pozdější cena už
+  // o době nákupu nic neříká a skutečné zlevnění mezi nákupem a ní by schovala). Ze záznamů do dne po nákupu se
+  // přidá jen cena s kupónem (kód, AlzaPlus+ – výpis je neukazuje všechny, detail je najde až další kontrolou), ne
+  // nová akční cena – ta je skutečné zlevnění po nákupu. Staré pozorování, které nikdo nepotvrdil ani priceGapDays
+  // před dnem nákupu (produkt viděný kdysi při procházení), cenou z doby nákupu není (getEntryEnd).
+  // null = v historii žádná cena z doby nákupu ani po něm; Infinity = cena z doby nákupu neznámá (historie začíná
+  // pozdě) – platí cena z objednávky
   getPurchaseReferencePrice(entries, boughtAt) {
     const priced = (Array.isArray(entries) ? entries : [])
       .filter((entry) => entry && Number.isFinite(entry.t) && entry.p && typeof entry.p === "object")
       .sort((a, b) => a.t - b.t)
-      .map((entry) => ({ t: entry.t, p: entry.p, price: this.getPayNowPrice(entry.p) ?? this.getLowestPrice(entry.p) }));
+      .map((entry) => ({ t: entry.t, s: entry.s, p: entry.p, price: this.getPayNowPrice(entry.p) }));
     const from = boughtAt - this.dayMs;
     const to = boughtAt + this.dayMs;
-    // Stav platí od zjištění do dalšího záznamu (záznam bez ceny = produkt se neprodával, ale ukončí předchozí)
-    const atPurchase = priced.filter((entry, i) => entry.t <= boughtAt && (priced[i + 1]?.t ?? Infinity) > from && entry.price > 0).map((entry) => entry.price);
+    // Stav platí od zjištění do dalšího záznamu (záznam bez ceny = produkt se neprodával, ale ukončí předchozí),
+    // nejdéle priceGapDays po posledním potvrzení
+    const atPurchase = priced.filter((entry, i) => entry.t <= boughtAt && this.getEntryEnd(priced, i, true) > from && entry.price > 0).map((entry) => entry.price);
     if (atPurchase.length === 0) {
       const first = priced.find((entry) => entry.t > boughtAt && entry.price > 0);
+      if (first && first.t > boughtAt + this.purchaseReferenceLateDays * this.dayMs) return Infinity;
       if (first) atPurchase.push(first.price);
     }
     if (atPurchase.length === 0) return null;
@@ -2177,8 +2343,11 @@ const AlzaCore = {
           if (new Date(year, date.month - 1, date.day, 23, 59, 59).getTime() < refTime - 183 * this.dayMs) year++;
         }
       }
-      return { index: date.index, end: date.end, time: new Date(year, date.month - 1, date.day, 23, 59, 59).getTime() };
-    });
+      // Neexistující den (31. 2.) by Date tiše posunul na jiné datum (3. 3.) – takové datum se zahodí
+      const time = new Date(year, date.month - 1, date.day, 23, 59, 59);
+      if (time.getMonth() !== date.month - 1) return null;
+      return { index: date.index, end: date.end, time: time.getTime() };
+    }).filter(Boolean);
   },
 
   // Jazyk textu podmínek akce pro findTermDates: zadaný, jinak maďarština podle maďarských slov / data rok.měsíc.den
@@ -2318,13 +2487,6 @@ const AlzaCore = {
     };
   },
 
-  // Lhůta registrace pro nákup v čase boughtAt přímo z textu stránky akce → { registerFrom, registerUntil }
-  // (zkratka pro testy – rozšíření volá readCashbackTerms + getCashbackDates)
-  parseCashbackTerms(text, title = null, boughtAt = Date.now(), lang = null) {
-    const { registerFrom, registerUntil } = this.getCashbackDates(this.readCashbackTerms(text, title, boughtAt, lang), boughtAt);
-    return { registerFrom, registerUntil };
-  },
-
   // Co teď s připomínkou: "expired" = lhůta prošla (smazat), "open" = registrace je otevřená a ještě jsme
   // neupozornili, "soon" = do konce registrace zbývá cashbackSoonDays, null = nic (hotovo / ještě se nedá registrovat)
   getCashbackReminderStep(reminder, now = Date.now()) {
@@ -2340,6 +2502,916 @@ const AlzaCore = {
     return null;
   },
 
+  // Už koupené zboží (košík „Už to máte“): z Mých nákupů (product = owned[klíč], jen se zapnutou volbou ownedItems)
+  // a z hlídání po nákupu (purchase = purchases[klíč] – nákupy za posledních 14 dní). Vrácené se nepočítá.
+  // { at (poslední nákup), pieces (kusů v něm), price (cena kusu nebo null), times (kolikrát koupeno), order } nebo null
+  getOwnedSummary(product, purchase) {
+    const buys = (Array.isArray(product?.buys) ? product.buys : [])
+      .filter((buy) => Number.isFinite(buy?.t) && !buy.ret)
+      .map((buy) => ({ at: buy.t, pieces: Number(buy.n) || 1, price: buy.p > 0 ? buy.p : null, order: buy.o || null }));
+    // Nákup z hlídání po nákupu, který v Mých nákupech ještě není (stejný den = stejný nákup)
+    if (Number.isFinite(purchase?.boughtAt) && !buys.some((buy) => Math.abs(buy.at - purchase.boughtAt) < this.dayMs)) {
+      buys.push({ at: purchase.boughtAt, pieces: Number(purchase.count) || 1, price: purchase.price > 0 ? purchase.price : null, order: null });
+    }
+    if (buys.length === 0) return null;
+    const last = buys.reduce((latest, buy) => (buy.at > latest.at ? buy : latest));
+    return { ...last, times: buys.length };
+  },
+
+  // Souhrn hodnocení položek košíku: rows = [{ level ("high" | "good" | "usual" | null), current, typical, count,
+  // wait, warn }] → { high: { n, amount }, good: { n, amount }, wait, warn } (amount = rozdíl proti obvyklé ceně
+  // za všechny kusy, kladné číslo)
+  summarizeBasket(rows) {
+    const result = { high: { n: 0, amount: 0 }, good: { n: 0, amount: 0 }, wait: 0, warn: 0 };
+    rows.forEach(({ level, current, typical, count = 1, wait, warn }) => {
+      if ((level === "high" || level === "good") && current > 0 && typical > 0) {
+        result[level].n++;
+        result[level].amount += Math.abs(current - typical) * (count || 1);
+      }
+      if (wait) result.wait++;
+      if (warn) result.warn++;
+    });
+    result.high.amount = Math.round(result.high.amount * 100) / 100;
+    result.good.amount = Math.round(result.good.amount * 100) / 100;
+    return result;
+  },
+
+  // Výdaje v kalendářním měsíci (now) na doméně z přehledu objednávek Mých nákupů (storageKeys.ownedOrders):
+  // { "<doména>": { "<číslo>": [čas, částka] } } → součet částek objednávek z tohoto měsíce
+  getMonthSpending(ownedOrders, domainKey, now = Date.now()) {
+    const date = new Date(now);
+    const from = new Date(date.getFullYear(), date.getMonth(), 1).getTime();
+    const to = new Date(date.getFullYear(), date.getMonth() + 1, 1).getTime();
+    const orders = ownedOrders?.[domainKey];
+    return Math.round(
+      Object.values(orders && typeof orders === "object" ? orders : {})
+        .filter((order) => Array.isArray(order) && order[0] >= from && order[0] < to && Number.isFinite(order[1]))
+        .reduce((sum, order) => sum + order[1], 0) * 100
+    ) / 100;
+  },
+
+  // Faktura k nákupu (Moje nákupy → tlačítko Faktura): PDF z části objednávky, ve které je produkt (dobropisy ne). Odkaz
+  // nese přístupový token – zjišťuje se až po kliknutí a nikam se neukládá. Jen https na pdf.alza.cz / .sk / .hu.
+  // productKey = "<doména>_<číslo produktu>"; null = doklad není
+  pickOrderInvoice(detail, domainKey, productKey = null) {
+    const productId = productKey ? Number(String(productKey).split("_").pop()) : null;
+    const isPdf = (href) => {
+      try {
+        const url = new URL(String(href));
+        return url.protocol === "https:" && /^pdf\.alza\.(cz|sk|hu)$/.test(url.hostname);
+      } catch {
+        return false;
+      }
+    };
+    // Název dokladu bez diakritiky a malými: „Faktúra“ (sk) i „Számla“ (hu) pak najde jeden vzor
+    const nameOf = (document) => String(document?.name || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+    const parts = this.getOrderGoodsParts(detail, domainKey);
+    const withProduct = parts.filter((part) => (Array.isArray(part?.items) ? part.items : []).some((item) => Number(item?.commodityId) === productId));
+    for (const part of [...withProduct, ...parts]) {
+      // Dobropis / opravný doklad se nevrací nikdy – ani jako náhrada, když část jiný doklad nemá
+      const documents = (Array.isArray(part?.documents) ? part.documents : []).filter((document) => isPdf(document?.self?.href) && !this.invoiceCreditPattern.test(nameOf(document)));
+      const invoice = documents.find((document) => this.invoiceNamePattern.test(nameOf(document))) || documents[0];
+      if (invoice) return invoice.self.href;
+    }
+    return null;
+  },
+  // Vzory nad názvem bez diakritiky: faktura / faktúra / invoice / számla / daňový doklad; dobropis, opravný doklad,
+  // credit note, jóváírás, storno, helyesbítő számla
+  invoiceNamePattern: /faktur|invoice|szaml|danovy doklad/,
+  invoiceCreditPattern: /dobropis|opravn|credit|jovair|storn|helyesbit/,
+
+  // === Dochází vám? (Moje nákupy) ===
+  restockMinBuys: 3, // Rytmus až od tolika nákupů (různé dny)
+  restockSoonDays: 21, // Seznam „brzy dojde“: další nákup do tolika dní
+  restockMaxVariation: 0.6, // Rozptyl výdrže jednoho kusu (směrodatná odchylka / průměr), do kterého je rytmus pravidelný
+  restockPriceMaxAgeDays: 3, // Cena „teď“ v seznamu jen ze záznamu historie potvrzeného v posledních tolika dnech (starší s datem)
+
+  // Rytmus opakovaného nákupu produktu (vrácené ne, nákupy do 2 dnů od sebe = jeden, kusy se sečtou). Počítá se
+  // s kusy: odstup po nákupu / počet kusů v něm = výdrž jednoho kusu – 12 ks naráz nevydrží stejně jako 1 ks.
+  // { interval (medián odstupů mezi nákupy, dny), last, pieces (kusů v posledním nákupu), supply (na kolik dní poslední
+  // nákup vystačí = medián výdrže kusu × pieces), next (last + supply), buys } nebo null (málo nákupů, nepravidelná
+  // výdrž kusu, odstupy mimo 7–365 dní)
+  getRestockRhythm(product) {
+    const buys = [];
+    (Array.isArray(product?.buys) ? product.buys : [])
+      .filter((buy) => Number.isFinite(buy?.t) && !buy.ret)
+      .map((buy) => ({ t: buy.t, n: Number(buy.n) > 0 ? Number(buy.n) : 1 }))
+      .sort((a, b) => a.t - b.t)
+      .forEach((buy, index, all) => {
+        if (index === 0 || buy.t - all[index - 1].t > 2 * this.dayMs) buys.push({ ...buy });
+        else buys.at(-1).n += buy.n;
+      });
+    if (buys.length < this.restockMinBuys) return null;
+    const median = (values) => {
+      const sorted = [...values].sort((a, b) => a - b);
+      const middle = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    };
+    const gaps = buys.slice(1).map((buy, index) => (buy.t - buys[index].t) / this.dayMs);
+    const perPiece = gaps.map((gap, index) => gap / buys[index].n);
+    const interval = median(gaps);
+    const mean = perPiece.reduce((sum, days) => sum + days, 0) / perPiece.length;
+    const deviation = Math.sqrt(perPiece.reduce((sum, days) => sum + (days - mean) ** 2, 0) / perPiece.length);
+    if (interval < 7 || interval > 365 || deviation / mean > this.restockMaxVariation) return null;
+    const { t: last, n: pieces } = buys.at(-1);
+    const supply = Math.max(1, Math.round(median(perPiece) * pieces));
+    return { interval: Math.round(interval), last, pieces, supply, next: last + supply * this.dayMs, buys: buys.length };
+  },
+
+  // Dny do odhadu dalšího nákupu (záporné = odhad už prošel); null = prošel o víc než půl doby, na kterou poslední
+  // nákup vystačí – déle už zboží nejspíš nekupujete (seznam ani detail produktu pak rytmus neukazují)
+  getRestockDays(rhythm, now = Date.now()) {
+    if (!rhythm) return null;
+    const days = Math.round((rhythm.next - now) / this.dayMs);
+    return -days <= rhythm.supply / 2 ? days : null;
+  },
+
+  // Poslední nákup je jinak velký než obvykle (výdrž se od obvyklého odstupu liší o víc než pětinu) – k odhadu
+  // patří i počet kusů, jinak by „kupujete každých 30 dní – další za rok“ nedávalo smysl
+  isRestockUnusual(rhythm) {
+    return Boolean(rhythm) && Math.abs(rhythm.supply - rhythm.interval) > rhythm.interval * 0.2;
+  },
+
+  // Zboží, které brzy dojde: další nákup podle rytmu do restockSoonDays dní, nebo nedávno prošel (getRestockDays).
+  // [{ key, product, interval, last, pieces, supply, next, buys, days }] podle data
+  getRestockList(owned, now = Date.now()) {
+    return Object.entries(owned && typeof owned === "object" ? owned : {})
+      .map(([key, product]) => {
+        const rhythm = this.isKnownDomain(product?.domain) ? this.getRestockRhythm(product) : null;
+        const days = this.getRestockDays(rhythm, now);
+        return days !== null && days <= this.restockSoonDays ? { key, product, ...rhythm, days } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.next - b.next);
+  },
+
+  // Úspora nákupu proti běžné (ceníkové) ceně v den nákupu: (původní cena − zaplacená) × kusy; null = nevíme
+  // (bez ceny kusu nebo bez historie z doby nákupu), 0 = koupeno za běžnou cenu
+  getOwnedSaving(buy, entries, domainKey) {
+    if (!(buy?.p > 0) || buy.ret) return null;
+    const entry = this.getEntryAt(entries, buy.t);
+    if (!entry) return null;
+    const original = Number(entry.p.original);
+    if (!(original > 0)) return null;
+    const saving = original - buy.p;
+    return saving > this.getPriceTolerance(domainKey) ? Math.round(saving * (Number(buy.n) || 1) * 100) / 100 : 0;
+  },
+
+  // === Vyplatí se AlzaPlus+? (Moje nákupy) ===
+  alzaPlusMonths: 12, // Období odhadu
+
+  // Záznam historie platný v čase nákupu (getOwnedSaving, getPricesAt): poslední, který začal nejpozději v čase
+  // nákupu a platil ještě nejvýš týden před ním. Jen když takový není, první záznam do dne po nákupu (historie začala
+  // až kontrolou po nákupu) – pozdější záznam nesmí mít přednost: konec akce nebo nová cena s AlzaPlus+ pár hodin po
+  // nákupu v době nákupu neplatily. null = cenu kolem nákupu neznáme
+  getEntryAt(entries, time) {
+    const list = (Array.isArray(entries) ? entries : []).filter((item) => Number.isFinite(item?.t) && item.p && typeof item.p === "object");
+    const before = list.filter((item) => item.t <= time).at(-1);
+    if (before && Math.max(before.s || 0, before.t) >= time - 7 * this.dayMs) return before;
+    return list.find((item) => item.t > time && item.t <= time + this.dayMs) ?? null;
+  },
+
+  // Ceny z historie produktu v čase nákupu (getEntryAt). { public (nejnižší cena pro všechny), applus, applusOnly
+  // (cenu AlzaPlus+ nemá v záznamu žádná jiná cena k zaplacení – např. slevový kód na stejnou částku, s odchylkou
+  // nejvýš tolerance) } nebo null = cenu kolem nákupu neznáme
+  getPricesAt(entries, time, tolerance = 0) {
+    const entry = this.getEntryAt(entries, time);
+    if (!entry) return null;
+    const publicPrices = this.publicPriceTypes.map((type) => Number(entry.p[type])).filter((price) => price > 0);
+    if (publicPrices.length === 0) return null;
+    const applus = Number(entry.p.applus);
+    if (!(applus > 0)) return { public: Math.min(...publicPrices), applus: null, applusOnly: false };
+    const applusOnly = !Object.entries(this.getPayNowPriceMap(entry.p)).some(([type, price]) => type !== "applus" && Math.abs(Number(price) - applus) <= tolerance);
+    return { public: Math.min(...publicPrices), applus, applusOnly };
+  },
+
+  // Odhad AlzaPlus+ z nákupů za posledních alzaPlusMonths měsíců (owned = storageKeys.owned, histories = { klíč
+  // produktu: historie }). Počítají se jen nákupy se známou cenou kusu (buy.p – bez ní nevíme, co se zaplatilo)
+  // a s oběma cenami z doby nákupu v historii. Rozdíl = (cena pro všechny − cena s AlzaPlus+) × kusy.
+  // member = podle zaplacených cen to vypadá na členství (víc nákupů za cenu AlzaPlus+ než za běžnou); nákup za
+  // částku, kterou měl v záznamu i slevový kód, členství nedokládá.
+  // saving = u člena jen nákupy zaplacené za cenu AlzaPlus+ („ušetřili jste“), u nečlena to, oč zaplatil víc než
+  // s AlzaPlus+ („ušetřili byste“), jinak rozdíl obou cen; missed = u člena to, oč zaplatil víc u ostatních nákupů.
+  // → { buys, known, cheaper, saving: { "<doména>": částka }, missed: { … }, member: true | false | null }
+  estimateAlzaPlus(owned, histories, now = Date.now()) {
+    const since = this.addMonths(now, -this.alzaPlusMonths);
+    const result = { buys: 0, known: 0, cheaper: 0, saving: {}, missed: {}, member: null };
+    const sums = { all: {}, saved: {}, missed: {} };
+    const add = (sum, domain, amount) => (sum[domain] = Math.round(((sum[domain] || 0) + amount) * 100) / 100);
+    let paidPlus = 0;
+    let paidPublic = 0;
+    Object.entries(owned && typeof owned === "object" ? owned : {}).forEach(([key, product]) => {
+      if (!this.isKnownDomain(product?.domain) || !Array.isArray(product.buys)) return;
+      const tolerance = this.getPriceTolerance(product.domain);
+      product.buys
+        .filter((buy) => Number.isFinite(buy?.t) && buy.t >= since && buy.t <= now && !buy.ret)
+        .forEach((buy) => {
+          result.buys++;
+          const prices = buy.p > 0 ? this.getPricesAt(histories?.[key], buy.t, tolerance) : null;
+          if (!prices) return;
+          result.known++;
+          if (!(prices.applus > 0) || prices.applus >= prices.public - tolerance) return;
+          result.cheaper++;
+          const pieces = Number(buy.n) || 1;
+          add(sums.all, product.domain, (prices.public - prices.applus) * pieces);
+          if (Math.abs(buy.p - prices.applus) <= tolerance) {
+            add(sums.saved, product.domain, (prices.public - prices.applus) * pieces);
+            if (prices.applusOnly) paidPlus++;
+            return;
+          }
+          // Zaplaceno víc než s AlzaPlus+ – nejvýš o rozdíl obou cen (dražší nákup než cena z historie nic nedokládá)
+          const over = Math.min(buy.p, prices.public) - prices.applus;
+          if (over > tolerance) add(sums.missed, product.domain, over * pieces);
+          if (Math.abs(buy.p - prices.public) <= tolerance) paidPublic++;
+        });
+    });
+    if (paidPlus + paidPublic > 0) result.member = paidPlus > paidPublic;
+    result.saving = result.member === true ? sums.saved : result.member === false ? sums.missed : sums.all;
+    if (result.member === true) result.missed = sums.missed;
+    return result;
+  },
+
+  // === Recenze naruby (karta na detailu) ===
+  // Recenze z veřejného API Alzy (webapi.alza.*/api/catalog/v2/commodities/<id>/reviews – stejné, jaké načítá stránka)
+  reviewPageSize: 100,
+  reviewMaxPages: 3, // Nejvýš tolik stránek (pořadí určuje Alza – dotaz řazení nežádá)
+  reviewRecentDays: 90, // „Poslední 3 měsíce“ proti staršímu hodnocení
+  reviewTimeoutMs: 15000, // Časový limit jedné stránky recenzí
+  reviewRetryAfterMs: 60000, // Odstup po HTTP 403 / 429, než se načtení zkusí znovu
+  reviewCriticalRating: 3, // Hodnocení do tolika ★ = nespokojený zákazník – jeho výtka váží v pořadí dvojnásob
+  // Zápory, které nic neříkají („Zatím jsem na nic nepřišel“, „Žádné zápory“, „Nincs negatívum“, „No cons so far“),
+  // se poznají podle obsahu (isEmptyReviewNegative): samá slova z těchto tří skupin a mezi nimi zápor nebo pochvala.
+  // Vzory platí pro slovo malými písmeny bez diakritiky (normalizeReviewWord).
+  // Zápor: nic, žádné, bez, nenašel, nevím, nemám… / nič, žiadne… / nincs, semmi, nem / no, none, nothing
+  reviewNegationWords:
+    /^(?:nic|nicim|nicem|nicoho|nicom|zadn\w*|ziadn\w*|bez|nevim|neviem|nemam|nemame|neni|nie|niet|ne|nenas(?:el|la|li|iel)|nenachazim|nenalezl\w*|nepris(?:el|la|li|iel)|nenapad\w*|nenarazil\w*|neshledal\w*|nezjistil\w*|nezistil\w*|nezaznamenal\w*|nevsiml\w*|nevsimol|nepozor\w*|nepostrehl\w*|neobjevil\w*|neobjavil\w*|nevidim|nemuzu|nemohu|nemozem|nechybi|nechyba|nevadi|no|none|nothing|not|nil|cant|cannot|dont|didnt|havent|nincs\w*|semmi\w*|nem|sem)$/,
+  // Pochvala místo výtky: „OK“, „Spokojenost“, „Vše v pořádku“
+  reviewPraiseWords: /^(?:ok|okej|oukej|super|spokojen\w*|spokojn\w*|poradku|good|great|fine|perfect|elegedett|rendben)$/,
+  // Vata kolem záporu a obecná slova pro výtku (zápory, výhrady, problémy, hiba, cons, issues…)
+  reviewFillerWords:
+    /^(?:zatim|zatial|prozatim|dosud|doteraz|dosial|momentalne|aktualne|jsem|jsme|som|sme|jsou|je|su|na|o|k|ke|ku|mi|me|mne|ma|si|se|sa|to|tu|tam|by|bych|co|a|i|ani|az|uz|vubec|vobec|opravdu|naozaj|absolutne|uplne|asi|snad|zrejme|ja|osobne|u|v|ve|vo|z|ze|zo|s|so|tom|tomto|teto|tohoto|toho|ten|ta|tohle|nejak\w*|vytknout|vytknut|vytkl\w*|napsat|napisat|rict|povedat|uvest|uviest|ktere|ktery|ktory|ktore|bylo|bolo|byly|vse|vsechno|vsetko|produkt\w*|vyrobk\w*|vyrobek|veci|vec|zbozi|tovar\w*|zapor\w*|vyhrad\w*|vytk\w*|vytek|problem\w*|nedostat\w*|negativ\w*|minus\w*|chyb[auy]?|vad[auy]?|eddig|egyelore|meg|talaltam|talaltunk|talalok|tapasztaltam|tudok|ilyen|ilyet|az|egy|ra|jutott|eszembe|semmilyen|vele|benne|rajta|rola|hatran\w*|hiba\w*|kifogas\w*|panasz\w*|far|yet|any|anything|found|find|have|has|ve|to|report|mention|speak|of|at|all|really|that|can|think|about|the|there|are|is|were|was|for|now|as|it|with|this|cons?|issues?|complain\w*|drawbacks?|downsides?|faults?|flaws?)$/,
+  // Slova bez výpovědi pro výtky (spojky, předložky, obecná slova recenzí)
+  reviewStopWords: new Set(
+    (
+      "jsem jsou bylo byla jako jenom pouze trochu trošku moc velmi docela celkem není nebyl nebyla nebylo který která které když kdyby proto protože ještě také tedy přes pro pri při podle mezi oproti " +
+      "aby ale než nebo jinak taky tak zase hodně více méně dost hlavně spíš spíše víc hned potom pak teď tady tam tento tato toto tyto těch tím tom toho jeho její jejich svůj své svého " +
+      "telefon telefonu chybí chybějící absence produkt produktu výrobek výrobku zboží věc věci vůbec docela trošičku občas někdy časem zatím nic žádné nevím nemám všechno vše všem všechny ostatní ostatních " +
+      "špatná špatný špatné špatně horší slabá slabý slabé slabší vyšší nižší větší menší prostě bohužel možná zlá zlý zlé slabšia horšia vyššia rossz gyenge poor weak " +
+      "je sa som sú bol bola bolo ako len iba trocha veľmi celkom nie ktorý ktorá ktoré keď preto pretože ešte tiež teda podľa trochu viac menej " +
+      "nagyon csak kicsit egy egyik nem van volt lehet lenne kell mint ami amely hogy mert még már sem is és vagy de " +
+      "the and but not very only little bit with without for from that this have has had was were too more less"
+    ).split(" ")
+  ),
+
+  // Slovo malými písmeny bez diakritiky – pro vzory výš a pro kmen slova
+  normalizeReviewWord(word) {
+    return String(word).toLocaleLowerCase("cs").normalize("NFD").replace(/\p{M}/gu, "");
+  },
+
+  isReviewFillerWord(word) {
+    return this.reviewNegationWords.test(word) || this.reviewPraiseWords.test(word) || this.reviewFillerWords.test(word);
+  },
+
+  // Zápor bez výtky: žádné slovo („-“, „n/a“), nebo samá vata se záporem či pochvalou („Zatím jsem na nic nepřišel“,
+  // „Žádné zápory jsem nenašel“, „Bez výhrad“, „Vše OK“). „Zatím nic, jen vyšší cena“ výtka je – má slovo navíc.
+  // Zápor i pochvala dohromady („Není v pořádku“, „Not good“) je výtka – při pochybnosti se text nechává
+  isEmptyReviewNegative(text) {
+    const words = (this.normalizeReviewWord(text).replace(/['’]/g, "").match(/\p{L}+/gu) || []).filter((word) => word.length > 1);
+    if (words.length === 0) return true;
+    if (!words.every((word) => this.isReviewFillerWord(word))) return false;
+    return words.some((word) => this.reviewNegationWords.test(word)) !== words.some((word) => this.reviewPraiseWords.test(word));
+  },
+
+  // Hrubý kmen slova, ať se sečtou tvary téže výtky (baterie / baterka / baterii / baterky → „bater“, cena / cenou →
+  // „cen“): bez diakritiky, bez pádové koncovky a koncových samohlásek, nejvýš 5 písmen. Záměrně hrubé – občas spojí
+  // i příbuzná slova (nabíjení / nabíječka); chip ukazuje nejčastější tvar a příklad věty
+  getReviewStem(word) {
+    const normalized = this.normalizeReviewWord(word);
+    const base = normalized.replace(/(?:ami|emi|ich|ych|imi|ymi|ove|ovi|ach|ech|eho|emu|ou|em|om|am|um|im|ym|mi|ho|mu)$/, "").replace(/[aeiouy]+$/, "");
+    return (base.length >= 3 ? base : normalized).slice(0, 5);
+  },
+
+  // Texty záporů recenze: API vrací pole řetězců; jediný řetězec nebo položky { text } se čtou také
+  getReviewNegatives(review) {
+    const raw = Array.isArray(review?.negatives) ? review.negatives : typeof review?.negatives === "string" ? [review.negatives] : [];
+    return raw
+      .map((item) => (typeof item === "string" ? item : typeof item?.text === "string" ? item.text : "").trim())
+      .filter((text) => text && !this.isEmptyReviewNegative(text));
+  },
+
+  // Stránka odpovědi API recenzí: { reviews, more (je další stránka) }; null = nečekaný tvar odpovědi – to není
+  // „produkt nemá recenze“ (prázdné value)
+  parseReviewsPage(data) {
+    if (!data || typeof data !== "object" || !Array.isArray(data.value)) return null;
+    return { reviews: data.value, more: data.value.length >= this.reviewPageSize && Boolean(data.paging?.next) };
+  },
+
+  // Rozbor recenzí: { count, verified, average, recent: { average, count }, older: { average, count }, complaints:
+  // [{ word, count, critical, example }], worst: [{ rating, date, text, verified }] (nejhorší ověřené recenze
+  // s textem) }. reviews = položky value[] z API.
+  // complaints = výtky, které se v záporech opakují aspoň ve dvou recenzích; tvary slova se sčítají podle kmene
+  // (getReviewStem), word = nejčastější tvar, count = počet recenzí, critical = z toho s hodnocením do
+  // reviewCriticalRating ★, example = věta z nejhůř hodnocené recenze. Počítají se zápory ze všech recenzí – u dobře
+  // hodnoceného zboží je skoro všechny píšou spokojení zákazníci a jen z kritických recenzí by nezbylo nic; kritické
+  // ale váží dvojnásob (pořadí podle count + critical)
+  analyzeReviews(reviews, now = Date.now()) {
+    const list = (Array.isArray(reviews) ? reviews : []).filter((review) => Number(review?.rating) >= 1 && Number(review.rating) <= 5);
+    const average = (items) => (items.length ? Math.round((items.reduce((sum, review) => sum + Number(review.rating), 0) / items.length) * 10) / 10 : null);
+    const dated = list.map((review) => ({ review, time: Date.parse(review.reviewDate) }));
+    const recent = dated.filter(({ time }) => now - time <= this.reviewRecentDays * this.dayMs).map(({ review }) => review);
+    const older = dated.filter(({ time }) => now - time > this.reviewRecentDays * this.dayMs).map(({ review }) => review);
+    const stems = new Map();
+    list.forEach((review) => {
+      const rating = Number(review.rating);
+      const seen = new Set();
+      this.getReviewNegatives(review).forEach((text) => {
+        (text.toLocaleLowerCase("cs").match(/\p{L}{4,}/gu) || [])
+          .filter((word) => !this.reviewStopWords.has(word) && !this.isReviewFillerWord(this.normalizeReviewWord(word)))
+          .forEach((word) => {
+            const stem = this.getReviewStem(word);
+            const entry = stems.get(stem) || { forms: new Map(), count: 0, critical: 0, example: null, exampleRating: Infinity };
+            stems.set(stem, entry);
+            if (!seen.has(stem)) {
+              seen.add(stem);
+              entry.count++;
+              if (rating <= this.reviewCriticalRating) entry.critical++;
+              if (rating < entry.exampleRating) Object.assign(entry, { example: text.length > 120 ? `${text.slice(0, 117)}…` : text, exampleRating: rating });
+            }
+            entry.forms.set(word, (entry.forms.get(word) || 0) + 1);
+          });
+      });
+    });
+    const complaints = [...stems.values()]
+      .filter((entry) => entry.count >= 2)
+      .map(({ forms, count, critical, example }) => {
+        // Nejčastější tvar; při shodě kratší, pak podle abecedy
+        const [word] = [...forms.entries()].sort((a, b) => b[1] - a[1] || a[0].length - b[0].length || a[0].localeCompare(b[0], "cs"))[0];
+        return { word, count, critical, example };
+      })
+      .sort((a, b) => b.count + b.critical - (a.count + a.critical) || b.count - a.count || a.word.localeCompare(b.word, "cs"))
+      .slice(0, 8);
+    const worst = list
+      .filter((review) => review.verifiedPurchaseTag && Number(review.rating) <= 3)
+      .map((review) => {
+        const negatives = this.getReviewNegatives(review);
+        const text = [negatives.join(" · "), String(review.description || "")].filter(Boolean).join(" – ").trim();
+        return { rating: Number(review.rating), date: Date.parse(review.reviewDate) || null, text: text.length > 240 ? `${text.slice(0, 237)}…` : text, verified: true };
+      })
+      .filter((review) => review.text)
+      .sort((a, b) => a.rating - b.rating || (b.date || 0) - (a.date || 0))
+      .slice(0, 3);
+    return {
+      count: list.length,
+      verified: list.filter((review) => review.verifiedPurchaseTag).length,
+      average: average(list),
+      recent: { average: average(recent), count: recent.length },
+      older: { average: average(older), count: older.length },
+      complaints,
+      worst,
+    };
+  },
+
+  // Adresa stránky recenzí produktu v API (country = CZ / SK / HU podle domény)
+  getReviewsApiUrl(domainKey, productId, offset = 0) {
+    const country = { alza_cz: "CZ", alza_sk: "SK", alza_hu: "HU" }[domainKey];
+    const host = { alza_cz: "webapi.alza.cz", alza_sk: "webapi.alza.sk", alza_hu: "webapi.alza.hu" }[domainKey];
+    if (!country || !/^\d+$/.test(String(productId))) return null;
+    return `https://${host}/api/catalog/v2/commodities/${productId}/reviews?country=${country}&ucik=null&offset=${offset}&limit=${this.reviewPageSize}`;
+  },
+
+  // === Paměť prohlížení (listing-memory.js) ===
+  noteMaxLength: 500,
+
+  // Úhlopříčka na začátku názvu televizí a monitorů („55" Samsung…“, „23,8" Rapture…“) – značka je až za ní.
+  // Jen číslo se značkou palců: samotné číslo bývá součást značky („7 Days“), tam se značka raději neurčí
+  brandSizePattern: /^\d+(?:[.,]\d+)?(?:["″”“]|['’´]{2})$/u,
+  // První slova názvu, která sama celá značka nejsou („New Balance“ × „New Era“, „La Roche-Posay“ × „La Prairie“,
+  // „The North Face“ × „The Ordinary“) – značka se pak bere ze dvou slov. Bez tečky na konci („Dr.“ = „dr“)
+  brandPrefixes: new Set(
+    "new old the la le les los las el dr mr mrs ms san santa saint st sv de del della di du van von be under uncle royal red big mad air black".split(" ")
+  ),
+
+  // Slovo názvu bez ®™© a bez interpunkce na konci
+  cleanBrandWord(word) {
+    return String(word || "").replace(/[®™©]/g, "").replace(/[,:;]+$/, "");
+  },
+
+  // Klíč značky: název malými písmeny, bez ®™©, s jednou mezerou mezi slovy („Mobile  Origin®“ → „mobile origin“)
+  getBrandKey(name) {
+    return String(name || "").replace(/[®™©]/g, "").replace(/\s+/g, " ").trim().toLocaleLowerCase("cs");
+  },
+
+  // Slova, za kterými v názvu následuje značka zařízení, pro které produkt je („Kryt pro Apple iPhone“), ne výrobce
+  brandCompatibilityWords: new Set("pro pre na k ke do s se for with to für az a".split(" ")),
+
+  // Značka produktu podle seznamu značek, který výpis Alzy sám nabízí ve filtru „Značka“ (#producers – čte ho
+  // listing-memory.js): značka, která je v názvu celým slovem nejdřív, při shodě místa ta delší („New Balance“ před
+  // „New“). Výskyt za slovem „pro“, „na“, „for“… se přeskočí (značka zařízení, ne výrobce). Řeší víceslovné značky
+  // („Mobile Origin“, „Tempered Glass Protector“) i názvy začínající obecným slovem („Tvrzené sklo AlzaGuard…“).
+  // { key, name (jak ji píše Alza) } nebo null (seznam chybí nebo žádná značka v názvu není)
+  findProducerBrand(name, producers) {
+    if (!Array.isArray(producers) || producers.length === 0) return null;
+    const text = this.getBrandKey(name);
+    const isWordChar = (char) => Boolean(char) && /[\p{L}\d]/u.test(char);
+    let best = null;
+    producers.forEach((producer) => {
+      const key = this.getBrandKey(producer);
+      if (key.length < 2 || !/\p{L}/u.test(key)) return;
+      for (let index = text.indexOf(key); index >= 0; index = text.indexOf(key, index + 1)) {
+        if (isWordChar(text[index - 1]) || isWordChar(text[index + key.length])) continue;
+        const before = text.slice(0, index).trim().split(" ").pop();
+        if (this.brandCompatibilityWords.has(before)) continue;
+        if (!best || index < best.index || (index === best.index && key.length > best.key.length)) best = { index, key, name: String(producer).replace(/\s+/g, " ").trim() };
+        break;
+      }
+    });
+    return best ? { key: best.key, name: best.name } : null;
+  },
+
+  // Značka z názvu produktu ve výpisu: podle značek z filtru výpisu (findProducerBrand), jinak odhad ze začátku
+  // názvu – Alza dává výrobce na začátek („Samsung Galaxy…“, „LEGO® Technic…“), u televizí a monitorů za úhlopříčku.
+  // Dlaždice výpisu sama údaj o výrobci nemá (jen data-id a data-code).
+  // { key (malými, bez ®™), name } nebo null (název bez písmen)
+  getBrandFromName(name, producers = null) {
+    const known = this.findProducerBrand(name, producers);
+    if (known) return known;
+    // Výpis své značky zná a žádná v názvu není (hračka „Harry Potter Interaktivní sova“, hra, kniha) – raději žádná
+    // značka než první slovo názvu
+    if (Array.isArray(producers) && producers.length > 0) return null;
+    const words = String(name || "").trim().split(/\s+/);
+    if (words.length > 1 && this.brandSizePattern.test(words[0])) words.shift();
+    const first = this.cleanBrandWord(words[0]);
+    if (!/\p{L}/u.test(first) || first.length < 2) return null;
+    const second = this.brandPrefixes.has(first.toLocaleLowerCase("cs").replace(/\.$/, "")) ? this.cleanBrandWord(words[1]) : "";
+    const brand = /[\p{L}\d]/u.test(second) ? `${first} ${second}` : first;
+    return { key: brand.toLocaleLowerCase("cs"), name: brand };
+  },
+
+  // Klíč značky, jak ho ukládaly verze do 2026.11.16: první slovo názvu, bez přeskočení úhlopříčky a bez dvouslovných
+  // značek. null = název tehdy značku neměl
+  getLegacyBrandKey(name) {
+    const word = this.cleanBrandWord(String(name || "").trim().split(/\s+/)[0]);
+    return /\p{L}/u.test(word) && word.length >= 2 ? word.toLocaleLowerCase("cs") : null;
+  },
+
+  // Uložená skrytá značka, která skrývá produkt s tímto názvem: { key (klíč v brands), name } nebo null. Vedle dnešního
+  // klíče platí i klíč uložený starším způsobem (getLegacyBrandKey) – skrývá přesně to, co skrýval dřív („new“ dál
+  // skryje New Balance i New Era, dokud ho uživatel nevrátí), nic navíc. producers = značky z filtru výpisu:
+  // rozhoduje značka podle nich, pak odhad ze začátku názvu (značka skrytá na stránce bez filtru platí dál)
+  getHiddenBrand(brands, name, producers = null) {
+    if (!brands || typeof brands !== "object") return null;
+    const stored = (key, fallback) => (key && Object.hasOwn(brands, key) ? { key, name: brands[key]?.name || fallback } : null);
+    const known = this.findProducerBrand(name, producers);
+    // Název se známou značkou z filtru: odhad ze začátku názvu se nepoužije, kdyby ukazoval na jinou značku
+    // („Tvrzené sklo AlzaGuard“ není značka „Tvrzené“) – starý klíč (první slovo) ale platí dál
+    const guess = this.getBrandFromName(name);
+    const legacy = this.getLegacyBrandKey(name);
+    return stored(known?.key, known?.name) || (known ? null : stored(guess?.key, guess?.name)) || stored(legacy, legacy);
+  },
+
+  // Je produkt skrytý? "product" / "brand" / null. hidden = storageKeys.hidden, brands = storageKeys.hiddenBrands; skrytá
+  // značka platí pro všechny produkty stejné značky (getHiddenBrand)
+  isHiddenListing(hidden, brands, key, name, producers = null) {
+    if (hidden && typeof hidden === "object" && Object.hasOwn(hidden, key)) return "product";
+    return this.getHiddenBrand(brands, name, producers) ? "brand" : null;
+  },
+
+  // === Peněženka poukazů (storageKeys.vouchers) ===
+
+  // Kód poukazu bez mezer, velkými písmeny (Alza kódy nerozlišuje podle velikosti)
+  normalizeVoucherCode(code) {
+    return String(code || "").replace(/\s+/g, "").toUpperCase().slice(0, 50);
+  },
+
+  // Kód k zobrazení mimo stránku rozšíření (bublina v košíku na stránce Alzy, notifikace): jen konec kódu –
+  // „••••KFPE“. Celý kód by na stránce Alzy přečetl jakýkoli její skript; krátký kód ukáže méně znaků
+  maskVoucherCode(code) {
+    const value = this.normalizeVoucherCode(code);
+    const visible = value.length >= 8 ? 4 : value.length >= 5 ? 2 : value.length >= 3 ? 1 : 0;
+    return `••••${visible ? value.slice(-visible) : ""}`;
+  },
+
+  // Čím poukaz popsat v notifikaci vedle hodnoty: poznámka (zkrácená), bez ní maskovaný kód – celý kód na zamčenou
+  // obrazovku a do centra oznámení nepatří
+  getVoucherLabel(voucher) {
+    const note = typeof voucher?.note === "string" ? voucher.note.replace(/\s+/g, " ").trim() : "";
+    if (!note) return this.maskVoucherCode(voucher?.code);
+    return note.length > 40 ? `${note.slice(0, 39)}…` : note;
+  },
+
+  // Měna → doména (poukaz z textu e-mailu): Kč = alza.cz, € = alza.sk, Ft = alza.hu. Klíč = začátek zápisu měny
+  voucherCurrencyDomains: { kč: "alza_cz", czk: "alza_cz", korun: "alza_cz", "€": "alza_sk", eur: "alza_sk", ft: "alza_hu", huf: "alza_hu", forint: "alza_hu" },
+
+  // Data v textu po řadě: [{ index, time }], time = konec dne v místním čase. „21.1.2027“, „21. 1. 2027“,
+  // „2027-01-21“, „2027. 01. 21.“, „21/1/2027“ (den / měsíc). Datum bez roku („do 30. 11.“) = nejbližší takový den,
+  // který neskončil před víc než voucherYearlessPastDays dny – poukaz prošlý před pár dny zůstane prošlý (a nastavení
+  // na to upozorní), ne platný do příštího roku. Dvouciferný rok a měsíc slovem se nečtou (raději nevyplnit)
+  voucherYearlessPastDays: 31,
+  voucherDatePattern:
+    /(?<![\d./-])(?:(\d{1,2})\.\s{0,2}(\d{1,2})\.\s{0,2}(\d{4})(?!\d)|(\d{4})\s{0,2}[-.]\s{0,2}(\d{1,2})\s{0,2}[-.]\s{0,2}(\d{1,2})(?!\d)|(\d{1,2})\/(\d{1,2})\/(\d{4})(?!\d)|(\d{1,2})\.\s{0,2}(\d{1,2})\.(?!\s{0,2}\d(?!\d?:\d)))/g,
+  scanVoucherDates(text, now = Date.now()) {
+    const endOfDay = (year, month, day) => {
+      const date = new Date(year, month - 1, day, 23, 59, 59, 999);
+      return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date.getTime() : null;
+    };
+    const result = [];
+    for (const match of String(text || "").slice(0, this.voucherTextLimit).matchAll(this.voucherDatePattern)) {
+      const part = match.slice(1).map((value) => (value === undefined ? null : Number(value)));
+      let time = null;
+      if (part[0] !== null) time = endOfDay(part[2], part[1], part[0]);
+      else if (part[3] !== null) time = endOfDay(part[3], part[4], part[5]);
+      else if (part[6] !== null) time = endOfDay(part[8], part[7], part[6]);
+      else {
+        const year = new Date(now).getFullYear();
+        const limit = now - this.voucherYearlessPastDays * this.dayMs;
+        time = [year - 1, year, year + 1].map((candidate) => endOfDay(candidate, part[10], part[9])).find((candidate) => candidate !== null && candidate >= limit) ?? null;
+      }
+      if (time !== null) result.push({ index: match.index, time });
+    }
+    return result;
+  },
+
+  // První datum z textu (políčko data ve formuláři, buňka platnosti v košíku) → konec toho dne; null = nejde
+  parseVoucherDate(text, now = Date.now()) {
+    return this.scanVoucherDates(text, now)[0]?.time ?? null;
+  },
+
+  // Částky a procenta v textu po řadě: [{ index, end, kind: "amount" | "percent", value, domain (null = měnu
+  // neznáme), bare (číslo bez měny) }]. „100 Kč“, „1 500 Kč“, „1.500 Kč“ a „5.000 Ft“ (tečka před trojicí číslic =
+  // tisíce), „100,- Kč“, „500,-“, „12,50 €“, „€ 10“, „10 %“. Nejasný zápis („2,000 Ft“, „1.5000 Kč“) se nevrací.
+  // Vzor nemá povinný konec za číslem – dlouhá řada číslic nebo pomlček se projde jednou (ne od každého znaku znovu)
+  voucherTextLimit: 100000, // Delší vložený text se dál nečte
+  voucherAmountPattern:
+    /(?<![\d.,])(?:(€|eur)[ \t ]?)?(\d{1,3}(?:[    ]\d{3})+|\d{1,3}(?:\.\d{3})+|\d+)(?:[.,](\d{1,2}))?(?!\d)(,-|,–)?(?:[ \t  ]?(kč(?![a-zà-ž])|czk(?![a-zà-ž])|korun[a-zà-ž]{0,3}|€|eur[a-zà-ž]{0,3}|ft(?![a-zà-ž])|huf(?![a-zà-ž])|forint[a-zà-ž]{0,4}|%))?/gi,
+  scanVoucherAmounts(text, { bare = false } = {}) {
+    const result = [];
+    for (const match of String(text || "").slice(0, this.voucherTextLimit).matchAll(this.voucherAmountPattern)) {
+      const [, prefix, whole, decimals, dash, suffix] = match;
+      const unit = (suffix || prefix || "").toLowerCase();
+      const value = whole.length > 12 ? NaN : Number(`${whole.replace(/\D/g, "")}.${decimals || "0"}`);
+      if (!(value > 0) || value > 10_000_000) continue;
+      const position = { index: match.index, end: match.index + match[0].length };
+      if (unit === "%") {
+        if (value < 100) result.push({ ...position, kind: "percent", value, domain: null, bare: false });
+        continue;
+      }
+      const currency = Object.keys(this.voucherCurrencyDomains).find((key) => unit.startsWith(key));
+      if (!currency && !dash && !bare) continue;
+      result.push({ ...position, kind: "amount", value, domain: currency ? this.voucherCurrencyDomains[currency] : null, bare: !currency && !dash });
+    }
+    return result;
+  },
+
+  // První částka nebo procento z textu → { kind, value, domain? } nebo null
+  parseVoucherAmount(text) {
+    const [amount] = this.scanVoucherAmounts(text);
+    if (!amount) return null;
+    return amount.kind === "percent" ? { kind: "percent", value: amount.value } : { kind: "amount", value: amount.value, ...(amount.domain && { domain: amount.domain }) };
+  },
+
+  // Slova před částkou, podle kterých se pozná, co částka znamená (cs, sk, hu, en): min = minimální hodnota objednávky,
+  // minPhrase = totéž i se slovem o poukazu za ním („minimální hodnota objednávky pro uplatnění slevy“),
+  // cap = strop slevy nebo DPH, order = částka objednávky, strong / weak = hodnota poukazu
+  voucherWords: {
+    minPhrase: /minim[a-zà-ž]*\s+(?:hodnot|částk|čiastk|výš|objedn|nákup|rendelés|vásárl|érték|összeg|order|purchase|value|amount|spend)/g,
+    min:/minim|min\.|nejmén|najmen|alespoň|aspoň|legalább|at least|od hodnoty|při nákupu|pri nákupe|(?<![a-zà-ž])(?:nad|over|above)\s|(?<![a-zà-ž])(?:od|from)\s*$/g,
+    cap: /max|dph|áfa|(?<![a-zà-ž])vat(?![a-zà-ž])/g,
+    order: /objednáv|rendelés|order (?:total|value|amount|worth|of)|faktur|zaplat|uhrad|celkem|összesen|total|(?<![a-zà-ž])cen[auyeě](?![a-zà-ž])|doprav|szállít|shipping/g,
+    strong: /slev|zľav|poukaz|poukáž|kupon|kupón|kedvezm|utalvány|voucher|discount|coupon|dárk|darč|ajándék|gift|šek/g,
+    weak: /hodnot|výš|érték|összeg|value|amount|worth/g,
+  },
+  voucherMinAfter: /^\s{0,2}(?:felett|és több|a více|a viac|or more|and over)/i, // „10 000 Ft felett“ – slovo až za částkou
+
+  // Co částka znamená podle textu před ní (malými písmeny, od začátku věty nebo od předchozí částky): "min" =
+  // minimální hodnota objednávky, "skip" = strop slevy, DPH nebo částka objednávky, "named" = hodnota poukazu
+  // (jmenuje ji slovo jako sleva, poukaz, hodnota), "value" = částka bez popisu
+  getVoucherAmountRole(before) {
+    const last = (pattern) => {
+      let index = -1;
+      for (const match of before.matchAll(pattern)) index = match.index;
+      return index;
+    };
+    const words = this.voucherWords;
+    const strong = last(words.strong);
+    const min = last(words.min);
+    if ((min >= 0 && min > strong) || last(words.minPhrase) >= 0) return "min";
+    if (last(words.cap) > strong) return "skip";
+    // „Objednávka v hodnotě 5 990 Kč“ – ale „sleva na příští objednávku 100 Kč“ je hodnota poukazu
+    if (strong < 0 && last(words.order) >= 0) return "skip";
+    return strong >= 0 || last(words.weak) >= 0 ? "named" : "value";
+  },
+
+  // Částky řádku s rolí (getVoucherAmountRole): [{ …scanVoucherAmounts, role }]
+  classifyVoucherAmounts(line) {
+    const text = String(line || "");
+    let from = 0;
+    return this.scanVoucherAmounts(text).map((amount) => {
+      let before = text.slice(Math.max(from, amount.index - 80), amount.index);
+      from = amount.end;
+      let sentence = -1;
+      for (const match of before.matchAll(/[.!?]\s+(?=\p{Lu})/gu)) sentence = match.index + match[0].length;
+      if (sentence >= 0) before = before.slice(sentence);
+      let role = this.getVoucherAmountRole(before.toLowerCase());
+      if (role !== "min" && amount.kind === "amount" && this.voucherMinAfter.test(text.slice(amount.end, amount.end + 20))) role = "min";
+      return { ...amount, role };
+    });
+  },
+
+  // Slova textu s pozicí: [{ index, word }] – písmena a číslice, pomlčka jen uvnitř slova („ABCD-1234-EFGH“ je jedno
+  // slovo, „použijte“ také – úlomek za písmenem s diakritikou se neoddělí). Adresy a e-maily se vynechají
+  scanVoucherWords(text) {
+    const result = [];
+    for (const chunk of String(text || "").matchAll(/\S+/g)) {
+      if (/:\/\/|@|^www\./i.test(chunk[0])) continue;
+      for (const word of chunk[0].matchAll(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu)) result.push({ index: chunk.index + word.index, word: word[0] });
+    }
+    return result;
+  },
+
+  // Může být slovo kódem poukazu? Jen velká písmena a číslice (pomlčky uvnitř), aspoň jedno písmeno a jedna číslice –
+  // „2026“, „VANOCE“, „použijte“ ani částka „10EUR“ kódem nejsou. anyCase = i malými písmeny (jediné slovo za „Kód:“)
+  isVoucherCodeWord(word, { anyCase = false, min = 4 } = {}) {
+    const value = anyCase ? String(word).toUpperCase() : String(word);
+    if (value.length < min || value.length > 30 || /^\d+(?:EUR|CZK|HUF|FT)$/.test(value)) return false;
+    return /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(value) && /[A-Z]/.test(value) && /\d/.test(value);
+  },
+
+  voucherCodeLabel: /k[oó]d|code|kupon|kupón|voucher|poukaz|poukáž|utalvány/gi,
+  voucherCodeGap: 30, // Kód nejvýš tolik znaků za popiskem („poukaz v hodnotě 500 Kč, kód ABCD-1234“)
+  voucherLabelGap: 30, // Částka nejvýš tolik znaků za popiskem hodnoty, datum nejvýš dvakrát tolik za slovem o platnosti
+  voucherValueLabel: /(?:výše|výška|hodnota|sleva|zľava|kedvezmény|érték|összeg|amount|value|discount)[^:\t\d]{0,25}[:\t]/gi,
+  voucherUntilLabel: /(?<![a-zà-ž])(?:plat[íi](?![a-zà-ž])|platn|érvényes|lejár|valid|expir)/gi,
+
+  // Poukaz z textu e-mailu (omluva za zpoždění, dárkový poukaz): { code, kind, value, domain, until, minOrder } – co
+  // se nenašlo nebo není jednoznačné, je null (pole formuláře zůstane prázdné; špatně vyplněný poukaz stojí peníze).
+  // moreCodes: true = v textu je víc kódů, vrací se první.
+  // Kód: slovo z velkých písmen a číslic za popiskem (kód, poukaz, kupon…) na kterémkoli řádku, případně samotné na
+  // řádku pod ním; bez popisku jen když je takové slovo (aspoň 6 znaků) v textu jediné – část názvu zboží kódem není.
+  // Hodnota: za popiskem (Výše slevy:, Hodnota:), jinak jediná částka, která není minimem objednávky, stropem slevy
+  // ani částkou objednávky. Platnost: jen z řádku o platnosti, ne datum objednávky
+  parseVoucherText(text, now = Date.now()) {
+    const lines = String(text || "")
+      .slice(0, this.voucherTextLimit)
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const hasText = (value) => /[\p{L}\p{N}]/u.test(value);
+    // Jen krátký text – na dlouhé řadě teček by hledání konce trvalo
+    const unpunctuated = (value) => (value.length <= 41 ? value.replace(/[.,;!]+$/, "") : "");
+    // Nejvýš 20 popisků na řádek (text bez konců řádků s tisíci popisků by se procházel zbytečně dlouho)
+    const firstLabels = (line, pattern) => {
+      const result = [];
+      for (const match of line.matchAll(pattern)) if (result.push(match) >= 20) break;
+      return result;
+    };
+
+    const words = lines.map((line) => this.scanVoucherWords(line));
+    const codes = [];
+    const addCode = (word) => {
+      const code = this.normalizeVoucherCode(word);
+      if (!codes.includes(code)) codes.push(code);
+    };
+    lines.forEach((line, i) => {
+      const labels = firstLabels(line, this.voucherCodeLabel);
+      if (labels.length === 0) return;
+      const before = codes.length;
+      labels.forEach((label) => {
+        const end = label.index + label[0].length;
+        const hit = words[i].find(({ index, word }) => index >= end && index - end <= this.voucherCodeGap && this.isVoucherCodeWord(word));
+        if (hit) addCode(hit.word);
+      });
+      if (codes.length > before) return;
+      const lastLabel = labels[labels.length - 1];
+      const end = lastLabel.index + lastLabel[0].length;
+      // Jediné slovo za popiskem platí i malými písmeny („Kód: sleva10x“, „kód abcd1234“)
+      const single = line.slice(end).match(/^(?:[^:\t]{0,25}[:\t])?\s{0,5}(\S{1,40})$/)?.[1];
+      if (single && this.isVoucherCodeWord(unpunctuated(single), { anyCase: true })) {
+        addCode(unpunctuated(single));
+        return;
+      }
+      // Kód samotný na dalším řádku („Slevový kód:“ a pod ním kód); za větou s popiskem jen velkými písmeny
+      const next = unpunctuated(lines[i + 1] || "");
+      const labelOnly = !words[i].some(({ index }) => index >= end);
+      if (/^\S{1,40}$/.test(next) && this.isVoucherCodeWord(next, { anyCase: labelOnly })) addCode(next);
+    });
+    if (codes.length === 0) {
+      const loose = [...new Set(words.flat().filter(({ word }) => this.isVoucherCodeWord(word, { min: 6 })).map(({ word }) => word))];
+      if (loose.length === 1) codes.push(loose[0]);
+    }
+
+    const amounts = lines.map((line) => this.classifyVoucherAmounts(line));
+    const isValue = ({ role }) => role === "named" || role === "value";
+    let amount = null;
+    for (let i = 0; i < lines.length && !amount; i++) {
+      for (const label of firstLabels(lines[i], this.voucherValueLabel)) {
+        const end = label.index + label[0].length;
+        // „Minimální hodnota objednávky:“ ani „Hodnota objednávky:“ popiskem hodnoty poukazu nejsou
+        if (["min", "skip"].includes(this.getVoucherAmountRole(lines[i].slice(Math.max(0, end - 80), end).toLowerCase()))) continue;
+        // Částka hned za popiskem; když popiskem řádek končí, na řádku pod ním
+        const rest = amounts[i].filter(({ index }) => index >= end && index - end <= this.voucherLabelGap);
+        amount = rest.find(isValue) || (rest.length === 0 && !hasText(lines[i].slice(end)) ? (amounts[i + 1] || []).find(isValue) : null) || null;
+        if (amount) break;
+      }
+    }
+    if (!amount) {
+      const all = amounts.flat().filter(isValue);
+      const named = all.filter(({ role }) => role === "named");
+      const pool = named.length > 0 ? named : all;
+      if (new Set(pool.map(({ kind, value, domain }) => `${kind}|${value}|${domain}`)).size === 1) amount = pool[0];
+    }
+    const min = amounts.flat().find(({ role, kind }) => role === "min" && kind === "amount");
+
+    let until = null;
+    for (let i = 0; i < lines.length && until === null; i++) {
+      for (const label of firstLabels(lines[i], this.voucherUntilLabel)) {
+        // Datum kousek za popiskem a v téže větě („Platí na vše. Objednáno 1. 11. 2026“ platnost není)
+        const rest = lines[i].slice(label.index + label[0].length).slice(0, 120);
+        const sentence = rest.search(/[.!?]\s+\p{Lu}/u);
+        const dates = this.scanVoucherDates(sentence < 0 ? rest : rest.slice(0, sentence + 1), now).filter(({ index }) => index <= 2 * this.voucherLabelGap);
+        // „Platnost od 1. 11. 2026 do 30. 11. 2026“ – první datum je začátek platnosti
+        const range = dates.length > 1 && /(?:^|[^a-zà-ž])(?:od|from)[\s:]{0,3}$/i.test(rest.slice(0, dates[0].index));
+        until = (range ? dates[1] : dates[0])?.time ?? null;
+        // Datum na začátku dalšího řádku jen za samotným popiskem („Platnost do:“), ne za větou
+        if (until === null && /^[^:\t\d.]{0,12}[:\t]?\s{0,5}$/.test(rest)) until = this.scanVoucherDates(lines[i + 1], now).find(({ index }) => index <= 3)?.time ?? null;
+        if (until !== null) break;
+      }
+    }
+    return {
+      code: codes[0] || null,
+      kind: amount?.kind || null,
+      value: amount?.value || null,
+      domain: amount?.domain || min?.domain || null,
+      until,
+      minOrder: min?.value || null,
+      ...(codes.length > 1 && { moreCodes: true }),
+    };
+  },
+
+  // Řádek poukazu v tabulce košíku Alzy → { kind, value, minOrder }. Hodnota jen z buňky částky („100 Kč“, „-100,-“,
+  // „5 %“; víc čísel v buňce = null), z textu podmínky jen minimální hodnota objednávky – ne hodnota poukazu
+  parseBasketVoucherRow(amountText, conditionText) {
+    const found = this.scanVoucherAmounts(amountText, { bare: true });
+    const certain = found.filter((amount) => !amount.bare);
+    const pool = certain.length > 0 ? certain : found;
+    const amount = pool.length === 1 ? pool[0] : null;
+    const min = this.classifyVoucherAmounts(conditionText).find(({ role, kind }) => role === "min" && kind === "amount");
+    return { kind: amount?.kind || null, value: amount?.value || null, minOrder: min?.value || null };
+  },
+
+  // Stav poukazu: { state: "active" | "expired" | "used", daysLeft (null = platnost neznáme; 1 = poslední den) }
+  getVoucherState(voucher, now = Date.now()) {
+    const daysLeft = voucher?.until > 0 ? Math.ceil((voucher.until - now) / this.dayMs) : null;
+    if (voucher?.usedAt) return { state: "used", daysLeft };
+    if (voucher?.until > 0 && now > voucher.until) return { state: "expired", daysLeft };
+    return { state: "active", daysLeft };
+  },
+
+  // Počet dní se správným tvarem slova: „1 den“, „3 dny“, „5 dní“ (sk deň / dni / dní, hu nap, en day / days)
+  formatDays(lang, days) {
+    const n = Math.max(0, Math.round(Number(days) || 0));
+    const few = n >= 2 && n <= 4;
+    if (lang === "cz") return `${n} ${n === 1 ? "den" : few ? "dny" : "dní"}`;
+    if (lang === "sk") return `${n} ${n === 1 ? "deň" : few ? "dni" : "dní"}`;
+    if (lang === "hu") return `${n} nap`;
+    return `${n} ${n === 1 ? "day" : "days"}`;
+  },
+
+  // Hodnota poukazu k zobrazení: „100 Kč“ / „10 %“
+  formatVoucherValue(voucher) {
+    if (voucher?.kind === "percent") return `${String(voucher.value).replace(".", ",")} %`;
+    return this.formatPrice(voucher?.value, voucher?.domain);
+  },
+
+  // Aktivní poukazy domény pro košík – nejdřív končící, bez platnosti na konec: [{ id, voucher, daysLeft }]
+  getActiveVouchers(vouchers, domainKey, now = Date.now()) {
+    return Object.entries(vouchers && typeof vouchers === "object" ? vouchers : {})
+      .filter(([, voucher]) => voucher?.code && voucher.domain === domainKey && this.getVoucherState(voucher, now).state === "active")
+      .map(([id, voucher]) => ({ id, voucher, daysLeft: this.getVoucherState(voucher, now).daysLeft }))
+      .sort((a, b) => (a.voucher.until || Infinity) - (b.voucher.until || Infinity));
+  },
+
+  // Kolik v košíku chybí do minimální hodnoty objednávky poukazu (0 = stačí nebo poukaz minimum nemá)
+  getVoucherShortfall(voucher, total) {
+    return voucher?.minOrder > 0 && Number.isFinite(total) && total < voucher.minOrder ? Math.round((voucher.minOrder - total) * 100) / 100 : 0;
+  },
+
+  // Slevové řádky objednávky (záporná cena) bez slev na dopravu: [{ amount (za celý řádek), percent, name }]
+  voucherShippingLine: /doprav|doruč|poštov|szállít|shipping|delivery/i,
+  parseOrderVoucherLines(detail) {
+    return (Array.isArray(detail?.parts) ? detail.parts : [])
+      .flatMap((part) => (Array.isArray(part?.items) ? part.items : []))
+      .filter((item) => /^\s*[-−]/.test(String(item?.pricePerItem || item?.price || "")) && !this.voucherShippingLine.test(String(item?.commodityName || "")))
+      .map((item) => {
+        const total = this.parsePositivePrice(String(item.price || ""));
+        const unit = this.parsePositivePrice(String(item.pricePerItem || ""));
+        return { amount: total ?? (unit ? unit * (Number(item.count) || 1) : null), percent: this.parseOrderDiscountPercent(item.commodityName), name: String(item.commodityName || "") };
+      })
+      .filter((line) => line.amount > 0);
+  },
+
+  // Košík: co zapsat k poukazům domény podle tabulky uplatněných poukazů (appliedCodes = kódy z ní). seen = poukaz
+  // v tabulce je a čas uplatnění (applied) chybí nebo je starší než voucherAppliedRefreshMs; gone = čas uplatnění má,
+  // ale v tabulce není (Alza ho odmítla, uživatel ho odebral) – applied se smaže, jinak by ho další objednávka se
+  // stejně vysokou slevou označila za použitý. Samotné kliknutí na „Vložit“ uplatnění neznamená
+  getBasketVoucherChanges(vouchers, domainKey, appliedCodes, now = Date.now()) {
+    const codes = new Set(appliedCodes || []);
+    const seen = [];
+    const gone = [];
+    Object.entries(vouchers && typeof vouchers === "object" ? vouchers : {}).forEach(([id, voucher]) => {
+      if (!voucher?.code || voucher.domain !== domainKey || voucher.usedAt) return;
+      if (!codes.has(voucher.code)) {
+        if (voucher.applied > 0) gone.push(id);
+      } else if (!(Math.abs(now - (voucher.applied || 0)) < this.voucherAppliedRefreshMs)) seen.push(id);
+    });
+    return { seen, gone };
+  },
+
+  // Poukazy z peněženky použité v objednávce: uplatněné v košíku (applied – poukaz byl v tabulce poukazů košíku) před
+  // objednávkou, nejvýš voucherUseWindowDays před ní, a se slevovým řádkem stejné hodnoty (Alza kód v objednávce
+  // neuvádí – dárkový poukaz je „Sleva na zboží – dárkový šek“). Objednávka vytvořená před uplatněním se nepáruje
+  // (jen voucherClockToleranceMs na rozdíl hodin počítače a Alzy). Sleva „k položce“ (AlzaPlus+ „Sleva 30% k položce
+  // …“) poukazem není. Každý řádek jen jednomu poukazu; ze dvou poukazů stejné hodnoty má přednost ten uplatněný
+  // později. Dárkový poukaz vyšší než řádek dárkového šeku (objednávka levnější než poukaz) až po poukazech se
+  // shodnou částkou a jen když je takový kandidát jediný. → [{ id, usedAt, usedOrder }] v pořadí poukazů
+  voucherClockToleranceMs: 15 * 60 * 1000,
+  voucherItemLine: /k\s+polo[žz]|tételhez|termékhez|(?:to|for) item/i, // cs / sk podle skutečných objednávek, hu / en odhadem
+  voucherGiftLine: /dárkov|darčekov|ajándék|gift/i,
+  matchVoucherUses(vouchers, domainKey, { created, orderNumber = null, lines = [] }) {
+    if (!Number.isFinite(created)) return [];
+    const tolerance = this.getPriceTolerance(domainKey);
+    const entries = Object.entries(vouchers && typeof vouchers === "object" ? vouchers : {});
+    const candidates = entries
+      .filter(([, voucher]) => voucher?.domain === domainKey && !voucher.usedAt && voucher.applied > 0)
+      .filter(([, voucher]) => created >= voucher.applied - this.voucherClockToleranceMs && created <= voucher.applied + this.voucherUseWindowDays * this.dayMs)
+      .sort(([, a], [, b]) => b.applied - a.applied);
+    const free = [...(Array.isArray(lines) ? lines : [])];
+    const used = new Set();
+    candidates.forEach(([id, voucher]) => {
+      const index = free.findIndex((line) => {
+        const itemLine = this.voucherItemLine.test(String(line?.name || ""));
+        if (voucher.kind === "percent") return line?.percent === voucher.value && !itemLine;
+        return Math.abs(line?.amount - voucher.value) <= tolerance && !(itemLine && line.percent !== null && line.percent !== undefined);
+      });
+      if (index < 0) return;
+      free.splice(index, 1);
+      used.add(id);
+    });
+    free
+      .filter((line) => this.voucherGiftLine.test(String(line?.name || "")))
+      .forEach((line) => {
+        const higher = candidates.filter(([id, voucher]) => !used.has(id) && voucher.kind !== "percent" && voucher.value > line.amount + tolerance);
+        if (higher.length === 1) used.add(higher[0][0]);
+      });
+    return entries.filter(([id]) => used.has(id)).map(([id]) => ({ id, usedAt: created, usedOrder: orderNumber ? String(orderNumber) : null }));
+  },
+
+  // Připomínky konce platnosti: [{ id, voucher, step: "soon" | "last", daysLeft }] – poslední den přebije první
+  // připomínku (poukaz přidaný den před koncem dostane jen jednu)
+  getVoucherReminders(vouchers, now = Date.now()) {
+    return Object.entries(vouchers && typeof vouchers === "object" ? vouchers : {})
+      .map(([id, voucher]) => {
+        const { state, daysLeft } = this.getVoucherState(voucher, now);
+        if (state !== "active" || daysLeft === null || !this.isKnownDomain(voucher.domain)) return null;
+        if (daysLeft <= 1 && !voucher.notifiedLast) return { id, voucher, step: "last", daysLeft };
+        if (daysLeft <= this.voucherSoonDays && !voucher.notifiedSoon && !voucher.notifiedLast) return { id, voucher, step: "soon", daysLeft };
+        return null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.voucher.until - b.voucher.until);
+  },
+
+  // Poukaz z formuláře / košíku / zálohy → uložitelný záznam, nebo null (chybí kód, hodnota, doména)
+  sanitizeVoucher(input, now = Date.now()) {
+    if (!input || typeof input !== "object") return null;
+    const code = this.normalizeVoucherCode(input.code);
+    const kind = input.kind === "percent" ? "percent" : "amount";
+    const value = Number(input.value);
+    if (!/^[A-Z0-9-]{3,50}$/.test(code) || !this.isKnownDomain(input.domain) || !(value > 0) || (kind === "percent" && value >= 100) || value > 10_000_000) return null;
+    const time = (field) => (Number.isFinite(input[field]) && input[field] > 0 ? input[field] : null);
+    const minOrder = Number(input.minOrder);
+    const note = typeof input.note === "string" ? input.note.trim().slice(0, 200) : "";
+    return {
+      code,
+      domain: input.domain,
+      kind,
+      value,
+      ...(minOrder > 0 && minOrder <= 100_000_000 && { minOrder }),
+      ...(time("until") && { until: time("until") }),
+      ...(note && { note }),
+      addedAt: time("addedAt") && input.addedAt <= now + this.dayMs ? input.addedAt : now,
+      ...(time("applied") && { applied: time("applied") }),
+      ...(time("usedAt") && { usedAt: time("usedAt") }),
+      ...(typeof input.usedOrder === "string" && /^\d{1,20}$/.test(input.usedOrder) && { usedOrder: input.usedOrder }),
+      ...(input.notifiedSoon === true && { notifiedSoon: true }),
+      ...(input.notifiedLast === true && { notifiedLast: true }),
+    };
+  },
+
+  // Klíč poukazu – doména a kód (stejný kód podruhé = úprava, ne nový řádek)
+  getVoucherId(domainKey, code) {
+    return `${domainKey}_${this.normalizeVoucherCode(code)}`;
+  },
+
   // Další stupeň množstevní slevy kousek nad aktuálním počtem kusů (nejvýš o maxGap) – nápověda v košíku
   // „Přidejte 1 ks → 389 Kč/ks“. { from, add, unit, current, saving } (saving = za všechny kusy nového počtu)
   // nebo null, když žádný blízký výhodnější stupeň není
@@ -2349,7 +3421,7 @@ const AlzaCore = {
     const next = tiers.find(([from, , price]) => from > quantity && from - quantity <= maxGap && price < current);
     if (!next) return null;
     const [from, , unit] = next;
-    return { from, add: from - quantity, unit, current, saving: Math.round((current - unit) * from) };
+    return { from, add: from - quantity, unit, current, saving: Math.round((current - unit) * from * 100) / 100 };
   },
 
   // Nejnižší cena pro historické minimum: cena pod polovinou nejbližší vyšší ceny z téhož načtení je
@@ -2381,14 +3453,19 @@ const AlzaCore = {
   //   jump = věrohodná cena pod polovinou obvyklé ceny za posledních 30 dní (cena se skokově propadla) –
   //          jen výstraha, počítá se normálně: skutečné zlevnění o víc než polovinu se nesmí ztratit.
   //          Po ustálení nové ceny (víc než půlku okna) výstraha zmizí (reference = obvyklá cena)
+  // Hranice „gap“ u cen k zaplacení jen z cen k zaplacení (getPlausiblePayNowPrice – stejná jako u minima, šipky
+  // a hodnocení ceny): cashback mezi běžnou cenou a chybně přečtenou cenou by ji jinak zakryl. Cashback a výkup
+  // se dál srovnávají se všemi cenami – pod cenou k zaplacení jsou vždy
   getSuspiciousPrices(entries, priceMap, now = Date.now()) {
     const prices = this.getPriceEntries(priceMap || {});
     if (prices.length === 0) return [];
-    const plausible = this.getPlausibleLowest(prices.map(({ price }) => price));
+    const plausibleAll = this.getPlausibleLowest(prices.map(({ price }) => price));
+    const plausiblePayNow = this.getPlausiblePayNowPrice(Object.fromEntries(prices.map(({ type, price }) => [type, price]))) ?? plausibleAll;
     const typical = this.getWeightedMedian(this.getPriceSegments(entries, this.discountWindowDays, now));
 
     const result = [];
     prices.forEach(({ type, price }) => {
+      const plausible = this.laterRefundTypes.includes(type) ? plausibleAll : plausiblePayNow;
       if (price < plausible) result.push({ type, price, reason: "gap", reference: plausible });
       else if (typical !== null && price < typical * this.minPlausibleRatio) result.push({ type, price, reason: "jump", reference: typical });
     });
@@ -2408,52 +3485,130 @@ const AlzaCore = {
     return { below, reached: below && !target.below };
   },
 
-  // Nejnižší prodejní cena v posledních `days` dnech historie (cena platí až do další změny, bez
-  // nesmyslně nízkých cen – getPlausibleMinPrice).
-  // { value, at = kdy naposledy platila, days = kolik dní historie okno pokrývá, complete }
+  // Ceny k zaplacení při nákupu – bez cashbacku a výkupu (laterRefundTypes): ty platí jen za podmínek
+  // (registrace, odevzdání starého zařízení, dokud nedojde kapacita) a peníze se vrací až potom
+  getPayNowPriceMap(priceMap) {
+    return Object.fromEntries(Object.entries(priceMap || {}).filter(([type]) => !this.laterRefundTypes.includes(type)));
+  },
+
+  // Nejnižší věrohodná cena k zaplacení (getPayNowPriceMap + getPlausibleMinPrice); null = jen cashback / výkup
+  getPlausiblePayNowPrice(priceMap) {
+    return this.getPlausibleMinPrice(this.getPayNowPriceMap(priceMap));
+  },
+
+  // Dokdy platí záznam historie entries[index] – jediné místo, které určuje konec úseku ceny: nejdéle do dalšího
+  // záznamu a nejdéle priceGapDays po posledním potvrzení (s). Delší mezera mezi dvěma pozorováními je díra, ve
+  // které cenu neznáme (produkt viděný při procházení před 150 dny a dnes nemá 150 dní známé ceny). Poslední záznam
+  // končí posledním potvrzením; open = i on platí ještě priceGapDays po něm (cena v čase nákupu)
+  // Je mezi posledním potvrzením záznamu a časem `time` díra ve sledování (déle než priceGapDays)? Stejná cena viděná
+  // po takové pauze se nezapisuje jako pokračování záznamu, ale jako nový záznam – jinak by jeden záznam tvrdil
+  // souvislé sledování přes měsíce, kdy cenu nikdo neviděl (appendHistory, appendListingObservation, slučování)
+  isHistoryGap(entry, time) {
+    return time - Math.max(Number(entry?.s) || 0, Number(entry?.t) || 0) > this.priceGapDays * this.dayMs;
+  },
+
+  getEntryEnd(entries, index, open = false) {
+    const entry = entries[index];
+    const confirmed = Math.max(Number(entry.s) || 0, entry.t);
+    const known = confirmed + this.priceGapDays * this.dayMs;
+    const next = entries[index + 1]?.t;
+    if (!Number.isFinite(next)) return open ? known : confirmed;
+    return Math.min(next, known);
+  },
+
+  // Díry ve sledování mezi záznamy historie: [{ index, from, to }] – od konce známé ceny záznamu entries[index]
+  // (getEntryEnd) do začátku dalšího záznamu. Graf historie je kreslí jako pás „nesledováno“, tabulka jako řádek
+  getHistoryGaps(entries) {
+    return entries.map((entry, index) => ({ index, from: this.getEntryEnd(entries, index), to: entries[index + 1]?.t })).filter(({ from, to }) => to > from);
+  },
+
+  // Nejnižší cena k zaplacení v posledních `days` dnech historie (cena platí až do další změny, nejdéle getEntryEnd;
+  // bez nesmyslně nízkých cen a bez cashbacku / výkupu – getPlausiblePayNowPrice).
+  // { value, at = kdy naposledy platila, days = kolik dní okna historie pokrývá (bez děr v pozorování),
+  // complete = celé okno bez děr }
   getLowestInWindow(entries, days = this.discountWindowDays, now = Date.now()) {
     if (!entries?.length) return null;
     const from = now - days * this.dayMs;
     let best = null;
+    let unknown = 0; // Díry v pozorování uvnitř okna
 
     entries.forEach((entry, index) => {
-      const end = entries[index + 1]?.t ?? entry.s;
+      const end = this.getEntryEnd(entries, index);
+      const next = entries[index + 1]?.t;
+      if (next > end) unknown += Math.max(0, next - Math.max(end, from));
       if (end < from) return;
-      const lowest = this.getPlausibleMinPrice(entry.p);
+      const lowest = this.getPlausiblePayNowPrice(entry.p);
       if (lowest === null) return;
       if (!best || lowest < best.value || (lowest === best.value && end > best.at)) best = { value: lowest, at: end };
     });
 
     if (!best) return null;
     const start = Math.max(entries[0].t, from);
-    return { ...best, days: Math.max(0, Math.floor((now - start) / this.dayMs)), complete: entries[0].t <= from };
+    return { ...best, days: Math.max(0, Math.floor((now - start - unknown) / this.dayMs)), complete: entries[0].t <= from && unknown === 0 };
   },
 
-  // Podezřelá sleva: produkt je ve slevě (víc cen), ale za posledních 30 dní byl k mání znatelně levněji.
-  // Vrací výsledek getLowestInWindow nebo null, když je sleva v pořádku / není s čím srovnat
+  // Loni touhle dobou: nejnižší cena k zaplacení v období [před rokem, před rokem + days] – co se s cenou dělo loni
+  // v nadcházejícím měsíci (Black Friday, AlzaDny…). Jen když historie sahá před začátek období a ceny v něm známe.
+  // { lowest, at (kdy platila), then (cena přesně před rokem; null = neznáme), lower, cheaper } nebo null.
+  // lower = loni v období bylo znatelně levněji než current; cheaper = navíc tam cena opravdu klesla – znatelně pod
+  // cenu z jeho začátku (then). Samotné „loni bylo levněji“ k radě počkat nestačí: trvalé zdražení od loňska není
+  // loňská akce (lower bez cheaper – není co radit ani tvrdit, že levněji nebylo)
+  lastYearDays: 30,
+  getLastYearOutlook(entries, current, now = Date.now(), days = this.lastYearDays) {
+    if (!Array.isArray(entries) || entries.length === 0 || !(current > 0)) return null;
+    const from = now - 365 * this.dayMs;
+    const to = from + days * this.dayMs;
+    if (!(entries[0].t <= from)) return null;
+    let best = null;
+    let then = null;
+    entries.forEach((entry, index) => {
+      const end = this.getEntryEnd(entries, index);
+      if (entry.t > to || end < from) return;
+      const price = this.getPlausiblePayNowPrice(entry.p);
+      if (price === null) return;
+      if (entry.t <= from) then = price;
+      if (!best || price < best.lowest) best = { lowest: price, at: Math.max(entry.t, from) };
+    });
+    if (!best) return null;
+    const noticeable = 1 - this.verdictTolerancePercent / 100;
+    const lower = best.lowest < current * noticeable;
+    const cheaper = lower && then !== null && best.lowest < then * noticeable;
+    return { ...best, then, lower, cheaper };
+  },
+
+  // Podezřelá sleva: produkt je ve slevě (víc cen k zaplacení), ale za posledních 30 dní šel znatelně levněji
+  // koupit. Srovnávají se jen ceny k zaplacení – cashback a výkup nejsou prodejní cena (getPayNowPriceMap).
+  // Vrací výsledek getLowestInWindow + current (aktuální cena k zaplacení), null = sleva v pořádku / není s čím srovnat
   getDiscountWarning(entries, currentPriceMap, now = Date.now()) {
-    const values = Object.values(this.getPlausiblePriceMap(currentPriceMap));
+    const values = Object.values(this.getPlausiblePriceMap(this.getPayNowPriceMap(currentPriceMap)));
     if (values.length < 2) return null;
     const current = Math.min(...values);
     if (current >= Math.max(...values)) return null;
 
     const lowest = this.getLowestInWindow(entries, this.discountWindowDays, now);
-    return lowest && lowest.value < current * (1 - this.discountWarningMinPercent / 100) ? lowest : null;
+    return lowest && lowest.value < current * (1 - this.discountWarningMinPercent / 100) ? { ...lowest, current } : null;
   },
 
-  // Úseky prodejní ceny (bez nesmyslně nízkých – getPlausibleMinPrice) v posledních `days` dnech:
-  // [{ from, to, value }]. Cena platí do další změny,
-  // poslední do poslední kontroly; záznamy bez ceny (neprodává se) se vynechají
+  // Úseky ceny k zaplacení (bez nesmyslně nízkých a bez cashbacku / výkupu – getPlausiblePayNowPrice) v posledních `days` dnech:
+  // [{ from, to, value, resume? }]. Cena platí do další změny, nejdéle priceGapDays po posledním potvrzení
+  // (getEntryEnd), poslední do poslední kontroly; záznamy bez ceny (neprodává se) se vynechají.
+  // resume = čas dalšího záznamu, když úsek skončil dřív než on (díra v pozorování – cenu v ní neznáme)
   getPriceSegments(entries, days, now = Date.now()) {
     const from = now - days * this.dayMs;
     const result = [];
     (entries || []).forEach((entry, index) => {
-      const value = this.getPlausibleMinPrice(entry.p);
-      const end = entries[index + 1]?.t ?? entry.s;
+      const value = this.getPlausiblePayNowPrice(entry.p);
+      const end = this.getEntryEnd(entries, index);
       if (value === null || end < from) return;
-      result.push({ from: Math.max(entry.t, from), to: end, value });
+      const next = entries[index + 1]?.t;
+      result.push({ from: Math.max(entry.t, from), to: end, value, ...(next > end && { resume: next }) });
     });
     return result;
+  },
+
+  // Počet dní, kdy byla cena známá (součet úseků getPriceSegments – díry v pozorování se nepočítají)
+  getCoveredDays(segments) {
+    return segments.reduce((sum, segment) => sum + Math.max(0, segment.to - segment.from), 0) / this.dayMs;
   },
 
   // Medián vážený dobou platnosti – krátká akce obvyklou cenu nestáhne, dlouhodobá cena ano
@@ -2477,7 +3632,8 @@ const AlzaCore = {
     if (typeof current !== "number") return null;
     const segments = this.getPriceSegments(entries, this.typicalWindowDays, now);
     if (segments.length === 0) return null;
-    const days = Math.floor((segments[segments.length - 1].to - segments[0].from) / this.dayMs);
+    // Dny se známou cenou, ne rozpětí historie – úseky bez ceny (neprodávalo se) hodnocení nepodpírají
+    const days = Math.floor(this.getCoveredDays(segments));
     const typical = this.getWeightedMedian(segments);
     if (days < this.verdictMinDays || typical === null) return null;
 
@@ -2496,7 +3652,7 @@ const AlzaCore = {
       typical,
       lowest,
       days,
-      complete: entries[0].t <= now - this.typicalWindowDays * this.dayMs,
+      complete: segments[0].from <= now - this.typicalWindowDays * this.dayMs,
       sales: {
         count: sales.length,
         days: sales.length > 0 ? sales.reduce((sum, duration) => sum + duration, 0) / sales.length / this.dayMs : 0,
@@ -2504,7 +3660,8 @@ const AlzaCore = {
     };
   },
 
-  // Akce = souvislý úsek prodejní ceny pod hranicí cheap (přerušený výpadkem prodeje se počítá zvlášť).
+  // Akce = souvislý úsek prodejní ceny pod hranicí cheap (přerušený výpadkem prodeje se počítá zvlášť). Krátká díra
+  // v pozorování (do saleBridgeDays, např. týden vypnutý počítač) mezi dvěma zlevněnými úseky akci nerozdělí.
   // [{ from, to, lowest, duration = součet délek úseků, openStart = běžela už na začátku historie }]
   getSaleRuns(segments, cheap) {
     const runs = [];
@@ -2513,7 +3670,8 @@ const AlzaCore = {
       const previous = segments[index - 1];
       const last = runs[runs.length - 1];
       const duration = segment.to - segment.from;
-      if (last && previous && previous.value < cheap && previous.to >= segment.from) {
+      const bridged = previous?.resume === segment.from && segment.from - previous.to <= this.saleBridgeDays * this.dayMs;
+      if (last && previous && previous.value < cheap && (previous.to >= segment.from || bridged)) {
         last.to = segment.to;
         last.lowest = Math.min(last.lowest, segment.value);
         last.duration += duration;
@@ -2578,7 +3736,8 @@ const AlzaCore = {
     const publicNow = this.getPublicPrice(currentPriceMap);
     if (typeof claimed !== "number" || publicNow === null || publicNow >= claimed * 0.99) return null;
     if (!entries?.length) return null;
-    const days = Math.floor((now - entries[0].t) / this.dayMs);
+    // Dny se známou cenou (ne rozpětí historie) – „nikdy se za ni neprodával“ musí stát na skutečném sledování
+    const days = Math.floor(this.getCoveredDays(this.getPriceSegments(entries, Infinity, now)));
     if (days < this.verdictMinDays) return null;
 
     let highest = null;
@@ -2586,7 +3745,7 @@ const AlzaCore = {
     entries.forEach((entry, index) => {
       const value = this.getPublicPrice(entry.p);
       if (value === null) return;
-      const end = entries[index + 1]?.t ?? entry.s;
+      const end = this.getEntryEnd(entries, index);
       if (!highest || value > highest.value) highest = { value, at: end };
       if (value >= claimed * 0.99) lastCharged = end; // 1 % tolerance na zaokrouhlení
     });
@@ -2606,8 +3765,8 @@ const AlzaCore = {
       entry.p = entry.p && typeof entry.p === "object" ? entry.p : {};
       entry.a = this.classifyAvailability(entry.a, lang);
       const prev = result[result.length - 1];
-      // Záznam se změnou názvu zůstává samostatný
-      if (prev && !entry.n && prev.a === entry.a && this.isSamePriceMap(prev.p, entry.p)) {
+      // Záznam se změnou názvu zůstává samostatný; stejně tak záznam po díře ve sledování (isHistoryGap)
+      if (prev && !entry.n && prev.a === entry.a && this.isSamePriceMap(prev.p, entry.p) && !this.isHistoryGap(prev, entry.t)) {
         prev.s = entry.s;
       } else {
         result.push(entry);
@@ -2638,11 +3797,14 @@ const AlzaCore = {
     if (name && last && this.getLatestName(entries) === null) last.n = name;
     const nameChanged = Boolean(name) && name !== this.getLatestName(entries);
 
-    if (last && sameAvailability && !nameChanged && this.isSamePriceMap(last.p, snapshot)) {
+    // Stejný stav po díře ve sledování = nový záznam (stejná cena, ale mezitím ji nikdo neviděl)
+    const sameState = Boolean(last) && sameAvailability && !nameChanged && this.isSamePriceMap(last.p, snapshot);
+    if (sameState && !this.isHistoryGap(last, now)) {
       last.s = now;
       last.a ??= availability;
     } else {
-      entries.push({ t: now, s: now, p: snapshot, a: availability, ...(nameChanged && { n: name }) });
+      // Po díře bez zjištěné dostupnosti zůstává ta poslední známá (stav je jinak stejný)
+      entries.push({ t: now, s: now, p: snapshot, a: availability ?? (sameState ? last.a : null), ...(nameChanged && { n: name }) });
       this.trimHistory(entries);
     }
 
@@ -2666,7 +3828,10 @@ const AlzaCore = {
     const typical = entries.length > 0 ? (this.getPriceVerdict(entries, price, now)?.typical ?? null) : null;
     const strikethrough = priceMap.original > price ? priceMap.original : null;
     const reference = typical ?? strikethrough;
-    const percent = reference > price ? Math.floor(((reference - price) / reference) * 100) : 0;
+    // V haléřích / centech celými čísly – 6,30 → 4,41 € je přesně 30 %, v plovoucí čárce 29,999… → 29
+    const refCents = Math.round(reference * 100);
+    const priceCents = Math.round(price * 100);
+    const percent = refCents > priceCents ? Math.floor(((refCents - priceCents) * 100) / refCents) : 0;
     return { percent, price, reference, source: typical !== null ? "typical" : strikethrough !== null ? "strikethrough" : null, coupon };
   },
 
@@ -2716,6 +3881,8 @@ const AlzaCore = {
     if (isBlackFriday) main = { blackfriday: primary };
     else if (header) main = this.processSpecialPrice(primary, header, null, null);
     else if (isNormalBox && primary !== null && !original) main = { original: primary };
+    // Hlavní cena pod přeškrtnutou bez nadpisu akce – jako na detailu (extractPricesFromDocument)
+    else if (primary !== null && original && primary < original) main = { special: primary };
 
     const coupons = {};
     item.querySelectorAll(selectors.coupon).forEach((coupon) => {
@@ -2807,6 +3974,12 @@ const AlzaCore = {
     const sameMain = last && this.listingMainTypes.every((type) => last.p[type] === snapshot[type]);
     const sameCoupons = last && Object.entries(snapshot).every(([type, price]) => last.p[type] === price);
     const sameAvailability = !last || last.a === null || availability === null || last.a === availability;
+    // Shoda po díře ve sledování = nový záznam s cenami posledního (výpis neukazuje všechny ceny detailu)
+    if (last && sameMain && sameCoupons && sameAvailability && this.isHistoryGap(last, now)) {
+      entries.push({ t: now, s: now, p: { ...last.p }, a: availability ?? last.a ?? null });
+      this.trimHistory(entries);
+      return true;
+    }
     if (last && sameMain && sameCoupons && sameAvailability) {
       last.s = Math.max(last.s, now);
       last.a ??= availability;
@@ -2820,11 +3993,15 @@ const AlzaCore = {
     return true;
   },
 
+  quantityTierFixedAt: Date.UTC(2026, 10, 9), // Vydání 2026.11.9 – výpis už cenu „od …“ jako cenu produktu neukládá
+
   // Oprava historie po chybě do 2026.11.8.10: výpis kategorie u produktů s množstevní slevou ukazuje „od 76,-“
   // (cena kusu v nejvyšším stupni) a ta se ukládala jako cena produktu. Smaže záznamy, jejichž cena z cenového
   // boxu (listingMainTypes) je cena nejvyššího stupně (pod cenou 1 ks) a které nemají cenu, jakou výpis neukazuje
   // (cashback… = záznam z detailu); kód nebo AlzaPlus+ shodou rovný stupni záznam nesmaže. Sousední záznamy se
-  // stejnými cenami sloučí – jen se stejnou dostupností a bez změny názvu. Vrací počet smazaných
+  // stejnými cenami sloučí – jen se stejnou dostupností a bez změny názvu. Vrací počet smazaných.
+  // Jen záznamy ve tvaru, jaký chyba zapisovala (jediná cena z boxu, žádná přeškrtnutá), a jen z doby před
+  // opravou (quantityTierFixedAt) – pozdější záznam se stejnou cenou je skutečná akce, ne chyba čtení
   removeQuantityTierEntries(entries, quantityTiers) {
     const tiers = this.getQuantityTiers({ quantityTiers });
     if (!tiers || !Array.isArray(entries)) return 0;
@@ -2836,7 +4013,8 @@ const AlzaCore = {
       const prices = Object.entries(entry?.p || {}).filter(([, value]) => typeof value === "number");
       const main = prices.filter(([type]) => this.listingMainTypes.includes(type)).map(([, value]) => value);
       const fromListing = prices.every(([type]) => listingTypes.has(type));
-      return !(fromListing && main.length > 0 && Math.min(...main) === tierPrice);
+      const beforeFix = typeof entry?.t === "number" && entry.t < this.quantityTierFixedAt;
+      return !(beforeFix && fromListing && main.length === 1 && main[0] === tierPrice);
     });
     if (kept.length === before) return 0;
     const same = (a, b) =>
@@ -2988,9 +4166,10 @@ const AlzaCore = {
     pair: /\d\s*(?:\s(?:a|és|and)\s|\/)\s*\d+(?:[.,]\d+)?\s?kWh/iu, // "49 a 300 kWh", "49 / 300 kWh"
     set: /^\s*(?:set|szett)(?!\p{L})/iu, // Set pračka + sušička s jediným údajem – provoz jen jednoho spotřebiče by klamal
     // Hodnoty parametrů na detailu produktu (getDocumentEnergy): "140 kWh/annum", "33 kWh/100 c.", "75 kWh/1000h"
+    // (maďarsky by to bylo "75 kWh/1000 óra" – tvar na alza.hu není ověřený, vzor bere obojí)
     valueYear: /^(\d+(?:[.,]\d+)?)\s?kWh\s?\/\s?(?:rok|annum|év)$/iu,
     valueCycles: /^(\d+(?:[.,]\d+)?)\s?kWh\s?\/\s?100\s?c/iu,
-    valueHours: /^(\d+(?:[.,]\d+)?)\s?kWh\s?\/\s?1000\s?h/iu,
+    valueHours: /^(\d+(?:[.,]\d+)?)\s?kWh\s?\/\s?1000\s?(?:h|ó)/iu,
     hdr: /HDR/u, // Televize a monitory: počítá se běžný (SDR) režim, ne HDR
   },
   // Mimo rozsah = překlep v údajích Alzy (myčka „0,75 kWh/100 c.“ je spotřeba jednoho cyklu)
@@ -3012,6 +4191,42 @@ const AlzaCore = {
     const kwh = year[0] ?? cycles[0];
     const [min, max] = this.energyLimits[per];
     return kwh >= min && kwh <= max ? { kwh, per } : null;
+  },
+
+  energyCacheDays: 60, // Spotřeba v mezipaměti (storageKeys.energy) platí tolik dní, „bez údaje“ také
+  // Dlaždice výpisu, u které má smysl hledat spotřebu na stránce produktu: televize a monitory (v popisku spotřebu
+  // nemají). Rozhoduje druh zboží na začátku popisku – „Televize - Mini LED…“, „Monitor - IPS…“, „LCD monitor - …“,
+  // starší tvar „Televize SMART OLED, 139cm“ (sk Televízor, hu Televízió / TV, en Television / TV). Slovo kdekoli
+  // v názvu nebo popisku nestačí: „Držák na TV“, „Stojan na televizi“, „Monitor dechu“, „Multimediální centrum“
+  // (Apple TV) ani „TV box“ spotřebu na stránce nemají a zbytečně by se stahovaly
+  energyCandidatePattern:
+    /^\s*(?:(?:smart|okos|lcd|led|oled|qled|hern[íý]|gamer|gaming)\s+){0,2}(?:televize|televízor|televízia|televízió|tévé|television|tv|monitor)(?:\s+(?:smart|android|google|led|oled|qled|qned|lcd|mini|neo|nanocell|4k|8k|uhd))*\s*(?:[-–—,:]|$)/iu,
+  // name se nepoužívá (název televize začíná úhlopříčkou a značkou, druh zboží v něm není); bez popisku raději ne
+  isEnergyCandidate(name, description) {
+    return this.energyCandidatePattern.test(String(description || ""));
+  },
+
+  // Stáří záznamu mezipaměti spotřeby je v mezích: ne starší než energyCacheDays a ne z budoucnosti (posunuté hodiny,
+  // ruční úprava zálohy) – takový by jinak platil napořád
+  isEnergyEntryFresh(entry, now = Date.now()) {
+    const age = now - Number(entry?.at);
+    return age >= 0 && age < this.energyCacheDays * this.dayMs;
+  },
+
+  // Platný záznam mezipaměti spotřeby: { kwh, per } / { none: true } / null (není, je starý nebo má čas v budoucnosti)
+  getCachedEnergy(cache, key, now = Date.now()) {
+    const entry = cache && typeof cache === "object" && Object.hasOwn(cache, key) ? cache[key] : null;
+    if (!entry || !this.isEnergyEntryFresh(entry, now)) return null;
+    if (entry.none) return { none: true };
+    const [min, max] = this.energyLimits[entry.per] || [];
+    return Number(entry.kwh) >= min && Number(entry.kwh) <= max ? { kwh: Number(entry.kwh), per: entry.per } : null;
+  },
+
+  // Klíče záznamů mezipaměti spotřeby, které už neplatí (staré, s časem v budoucnosti, poškozené) – zahodí se při
+  // dalším zápisu do mezipaměti (category.js fetchEnergy), ať mapa neroste napořád
+  getExpiredEnergyKeys(cache, now = Date.now()) {
+    if (!cache || typeof cache !== "object") return [];
+    return Object.keys(cache).filter((key) => !this.isEnergyEntryFresh(cache[key], now));
   },
 
   // Nastavení ceny provozu pro doménu: { enabled, price (za kWh v měně domény), years, cyclesPerWeek, hoursPerDay }.
@@ -3091,14 +4306,19 @@ const AlzaCore = {
 
   // Velikost balení z popisku varianty: "150 ks" → { amount: 150, unit: "ks" }, "500 g" → { amount: 0.5, unit: "kg" },
   // "1,5 l" → { amount: 1.5, unit: "l" }, "50 cm" → { amount: 0.5, unit: "m" }; množství může být i za názvem
-  // ("Sparkle 120 ks") a s násobkem ("2× 60 ks" → 120 ks); null = není množství (barva…)
+  // ("Sparkle 120 ks") a s násobky ("2× 60 ks" → 120 ks, "2 × 3 × 4 ks" → 24 ks, "2 balení po 60 ks" → 120 ks);
+  // null = není množství (barva…) ani rozměry ("20 × 30 × 40 cm" není délka 12 m)
   parseVariantSize(text) {
     const match = String(text || "")
       .trim()
-      .match(/(?:^|[^\p{L}\d.,])(?:(\d+)\s*[x×]\s*)?(\d+(?:[.,]\d+)?)\s*(ks|db|kg|g|ml|l|mm|cm|m)(?![\p{L}\d²])/iu);
+      .match(
+        /(?:^|[^\p{L}\d.,])(?:(\d+)\s*(?:balení|balenia|balenie|bal\.)\s+po\s+)?((?:\d+\s*[x×]\s*)+)?(\d+(?:[.,]\d+)?)\s*(ks|db|kg|g|ml|l|mm|cm|m)(?![\p{L}\d²])/iu
+      );
     if (!match) return null;
-    const amount = parseFloat(match[2].replace(",", ".")) * (match[1] ? parseInt(match[1], 10) : 1);
-    const unit = match[3].toLowerCase();
+    const unit = match[4].toLowerCase();
+    if (match[2] && ["mm", "cm", "m"].includes(unit)) return null;
+    const factors = [match[1], ...(match[2] || "").split(/[x×]/i)].map((part) => parseInt(part, 10)).filter((value) => value > 0);
+    const amount = factors.reduce((total, factor) => total * factor, parseFloat(match[3].replace(",", ".")));
     if (!(amount > 0)) return null;
     if (unit === "g") return { amount: amount / 1000, unit: "kg" };
     if (unit === "ml") return { amount: amount / 1000, unit: "l" };
@@ -3147,6 +4367,23 @@ const AlzaCore = {
     const prices = {};
     buttons.forEach(({ condition, price }) => (prices[condition] = price));
     return prices[current] ? { current, prices } : null;
+  },
+
+  // Ceny jiných stavů ve správném tvaru – zápis z detailu produktu (AlzaStore setPageMeta) nesmí do záznamu ceny
+  // dostat nic jiného než { current, prices: { new, unpacked, used } } s kladnými cenami; null = nejsou / neplatné
+  sanitizeConditions(value) {
+    const known = Object.keys(this.conditionPatterns);
+    if (!value || typeof value !== "object" || !known.includes(value.current) || !value.prices || typeof value.prices !== "object") return null;
+    const prices = Object.fromEntries(known.filter((key) => Number.isFinite(value.prices[key]) && value.prices[key] > 0).map((key) => [key, value.prices[key]]));
+    return prices[value.current] && Object.keys(prices).length > 1 ? { current: value.current, prices } : null;
+  },
+
+  // Co se z načtené stránky produktu (shared/product-page.js) zapisuje do záznamu ceny: ceny a metaúdaje bez historie.
+  // Počet kusů, který detail tentokrát nemá, zůstane původní; množstevní slevy a ceny jiných stavů se přepíšou vždy
+  // (null je smaže). Sdílí stránka seznamu i kontrola na pozadí – kontrola dřív zapsala jen ceny a čas, takže cena
+  // jiného stavu zůstala v čerstvě vypadajícím záznamu stará (košík: „Levněji rozbalený: 69 056 Kč“ při 72 690 Kč)
+  getPageRecordInput(page) {
+    return { ...page.prices, ...(page.packCount && { packCount: page.packCount }), quantityTiers: page.quantityTiers ?? null, conditions: page.conditions ?? null };
   },
 
   // Levnější stavy proti aktuálnímu: [{ condition, price, diff, percent }] od nejlevnějšího; prázdné = žádný.

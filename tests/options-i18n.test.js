@@ -18,8 +18,9 @@ const context = vm.createContext({});
 vm.runInContext(read("src/options/options-texts.js"), context);
 const TEXTS = vm.runInContext("OPTIONS_TEXTS", context);
 const html = read("src/options/options.html");
-// Skripty stránky, které berou texty přes t("…") – options.js a záložka Moje nákupy (options-owned.js)
-const script = ["src/options/options.js", "src/options/options-owned.js"].map(read).join("\n");
+// Skripty stránky, které berou texty přes t("…") – options.js, záložky Moje nákupy (options-owned.js), Kódy a
+// poukazy (options-vouchers.js) a Skryté ve výpisech (options-hidden.js)
+const script = ["src/options/options.js", "src/options/options-owned.js", "src/options/options-vouchers.js", "src/options/options-hidden.js"].map(read).join("\n");
 
 const placeholders = (text) => [...new Set(text.match(/\{\d+\}/g) || [])].sort();
 const normalize = (text) => text.replace(/\s+/g, " ").trim();
@@ -60,8 +61,10 @@ test("nastavení: každý klíč z options.js je ve slovníku", () => {
 });
 
 test("nastavení: ve slovníku nejsou nepoužité klíče", () => {
-  // Použitý = v atributu HTML nebo jako řetězec v options.js (i v podmínce: t(x ? "a" : "b"))
-  const used = new Set([...htmlKeys(), ...[...script.matchAll(/"([A-Za-z]\w*)"/g)].map(([, key]) => key)]);
+  // Použitý = v atributu HTML nebo jako řetězec v options.js (i v podmínce: t(x ? "a" : "b")) nebo ve funkcích
+  // na konci options-texts.js (describeNotificationTest – sdílí nastavení i průvodce)
+  const helpers = read("src/options/options-texts.js").split(/^function /m).slice(1).join("\n");
+  const used = new Set([...htmlKeys(), ...[...(script + helpers).matchAll(/"([A-Za-z]\w*)"/g)].map(([, key]) => key)]);
   Object.keys(TEXTS.cz).forEach((key) => assert.ok(used.has(key), `nepoužitý klíč ${key}`));
 });
 
@@ -214,4 +217,34 @@ test("hlášení chyby: popis cesty k diagnostice odpovídá záložce a tlačí
     path.forEach((label) => assert.ok(body.includes(label), `${lang}: reportBugBody neobsahuje „${label}“`));
     assert.ok(body.indexOf(`${path[0]} → ${path[1]}`) >= 0, `${lang}: ${path[0]} → ${path[1]}`);
   });
+});
+
+// Vyzkoušet notifikace: výsledek a rada podle systému a prohlížeče (issue #5 – macOS a Google Chrome Helper)
+test("nastavení: výsledek zkoušky notifikací radí podle systému", () => {
+  const run = (userAgent, result) => {
+    const sandbox = vm.createContext({ navigator: { userAgent } });
+    vm.runInContext(read("src/options/options-texts.js"), sandbox);
+    const text = (key, ...params) => params.reduce((value, param, i) => value.replaceAll(`{${i}}`, param), TEXTS.cz[key]);
+    return sandbox.describeNotificationTest(result, text);
+  };
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
+  const macFirefox = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0";
+  const windows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
+
+  const ok = run(mac, { sent: 3, failed: 0, error: "", level: "granted" });
+  assert.equal(ok.error, false);
+  assert.match(ok.text, /Google Chrome Helper \(Alerts\)/);
+  assert.match(run(macFirefox, { sent: 3, failed: 0 }).text, /povolte Firefox/);
+  assert.match(run(windows, { sent: 3, failed: 0 }).text, /Ve Windows .*Google Chrome/);
+
+  const failed = run(windows, { sent: 2, failed: 1, error: "Unable to download all specified images.", level: "granted" });
+  assert.equal(failed.error, true);
+  assert.match(failed.text, /1 z 3 .*\(Unable to download all specified images\.\)/);
+  assert.equal(run(windows, { sent: 3, failed: 0, level: "denied" }).error, true);
+  assert.equal(run(windows, null).error, true); // Služba na pozadí neodpověděla
+  // Před zkouškou jen rada pro systém (ukazuje se hned po otevření stránky)
+  assert.deepEqual({ ...run(mac, undefined) }, { text: TEXTS.cz.notifyHintMacChrome, error: false });
+  assert.match(run(windows, undefined).text, /^Ve Windows/);
+  const safari = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15";
+  assert.equal(run(safari, undefined).text, TEXTS.cz.notifyHintSafari); // Notifikace posílá aplikace pro Safari, ne prohlížeč
 });

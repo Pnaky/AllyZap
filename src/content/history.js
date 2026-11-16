@@ -161,14 +161,20 @@ Object.assign(AlzaPriceTracker, {
     productLink.href = product.url;
     productLink.target = "_blank";
     productLink.rel = "noopener";
-    // Nad názvem logo rozšíření a „Price Insight · Historie cen“ (logo v css/main.css – jako štítek lišt a karty)
-    heading.append(this.createEl("div", "alza-price-tracker-history-eyebrow", `Price Insight · ${this.translate("historyTitle")}`), productLink);
+    // Nad názvem logo rozšíření a „AllyZap · Historie cen“ (logo v css/main.css – jako štítek lišt a karty)
+    heading.append(this.createEl("div", "alza-price-tracker-history-eyebrow", `AllyZap · ${this.translate("historyTitle")}`), productLink);
     const closeButton = AlzaIcons.prepend(this.createEl("button", "alza-price-tracker-history-close"), "close");
     closeButton.type = "button";
     closeButton.title = this.translate("close");
     closeButton.setAttribute("aria-label", this.translate("close"));
     closeButton.addEventListener("click", () => dialog.close());
-    header.append(heading, closeButton);
+    header.append(heading);
+    // Poslední kontrola jako drobný údaj vedle křížku (dřív samostatná dlaždice – přetékala do druhého řádku)
+    if (entries.length > 0) {
+      const lastCheck = this.formatDateTime(entries[entries.length - 1].s);
+      header.appendChild(this.createEl("div", "alza-price-tracker-history-checked", `${this.translate("lastCheck")}: ${lastCheck}`));
+    }
+    header.appendChild(closeButton);
 
     body.append(
       header,
@@ -215,14 +221,18 @@ Object.assign(AlzaPriceTracker, {
 
   // Historické minimum / ceníkové maximum: uložené v záznamu seznamu, doplněné z historie (produkty mimo
   // seznamy záznam nemají a kontroly z detailu produktu nebo na pozadí se do něj nepromítají)
-  // kind: min = nejnižší prodejní cena, max = nejvyšší cena vůbec (ceníková), sellingMax = nejvyšší prodejní cena
+  // kind: min = nejnižší prodejní cena, max = nejvyšší cena vůbec (ceníková), sellingMax = nejvyšší prodejní cena.
+  // Minimum a prodejní maximum jen z cen k zaplacení – cashback a výkup platí jen za podmínek. Uložená hodnota
+  // z doby, kterou historie pokrývá, se nebere (starší záznamy ji mohly spočítat i s cashbackem) – historie je přesnější
   getHistoricExtreme(entries, stored, kind) {
     const isBetter = (value, best) => (kind === "min" ? value < best : value > best);
-    let best = typeof stored?.value === "number" ? stored : null;
+    const covered = kind !== "max" && entries.length > 0 && stored?.timestamp >= entries[0].t;
+    let best = typeof stored?.value === "number" && !covered ? stored : null;
     entries.forEach((entry) => {
       const values = Object.values(entry.p);
       if (values.length === 0) return;
-      const value = kind === "max" ? Math.max(...values) : AlzaCore.getPlausibleLowest(values);
+      const value = kind === "max" ? Math.max(...values) : AlzaCore.getPlausiblePayNowPrice(entry.p);
+      if (value === null) return;
       if (!best || isBetter(value, best.value)) best = { value, timestamp: entry.t };
     });
     return best;
@@ -256,7 +266,8 @@ Object.assign(AlzaPriceTracker, {
     return stat;
   },
 
-  // Dlaždice: minimum, prodejní a ceníkové maximum, začátek sledování, poslední kontrola
+  // Dlaždice: minimum, prodejní a ceníkové maximum, nejnižší za 30 dní, obvyklá cena, začátek sledování
+  // (poslední kontrola je v záhlaví vedle křížku)
   createHistoryStats(entries, productData) {
     const stats = this.createEl("div", "alza-price-tracker-history-stats");
     const addStat = (label, value, sub, color, subColor) => this.appendStat(stats, "history", label, value, sub, color, subColor);
@@ -296,7 +307,7 @@ Object.assign(AlzaPriceTracker, {
     }
 
     // Obvyklá cena – v podtitulku hodnocení aktuální ceny (bez nesmyslně nízké ceny)
-    const current = AlzaCore.getPlausibleMinPrice(priceMap);
+    const current = AlzaCore.getPlausiblePayNowPrice(priceMap);
     const verdict = AlzaCore.getPriceVerdict(entries, current);
     if (verdict) {
       const { label, hint, color } = this.getVerdictText(verdict, current);
@@ -312,12 +323,6 @@ Object.assign(AlzaPriceTracker, {
         this.translate("changesCount", entries.length - 1)
       );
       since.title = this.formatDateTime(entries[0].t);
-      const lastCheck = entries[entries.length - 1].s;
-      addStat(
-        this.translate("lastCheck"),
-        this.formatDate(lastCheck),
-        new Date(lastCheck).toLocaleTimeString(this.state.locale, { hour: "2-digit", minute: "2-digit" })
-      );
     }
 
     return stats;

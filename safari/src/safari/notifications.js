@@ -1,6 +1,6 @@
 // Safari: API notifikací (chrome.notifications) rozšíření v Safari zatím nemají. Bez něj by služba na pozadí
 // spadla hned na chrome.notifications.onClicked. Tento soubor ho nahradí mostem do nativní aplikace
-// (Alza Price Insight.app, SafariWebExtensionHandler): notifikaci zobrazí macOS jménem aplikace a kliknutí na ni
+// (AllyZap.app, SafariWebExtensionHandler): notifikaci zobrazí macOS jménem aplikace a kliknutí na ni
 // otevře produkt v Safari (obsluhuje aplikace – události onClicked / onClosed se sem proto nikdy nevrátí).
 //
 // Načítá se jako první skript stránky na pozadí a v průvodci nastavením (getPermissionLevel). Když Safari API
@@ -16,7 +16,7 @@
 
   async function sendNative(message) {
     const reply = await chrome.runtime.sendNativeMessage(NATIVE_APP, message);
-    if (!reply?.ok) throw new Error(`Alza Price Insight.app: ${reply?.error || "bez odpovědi"}`);
+    if (!reply?.ok) throw new Error(`AllyZap.app: ${reply?.error || "bez odpovědi"}`);
     return reply;
   }
 
@@ -119,7 +119,7 @@
     try {
       globalThis.chrome = patched;
     } catch (error) {
-      console.error("Alza Price Insight (Safari): náhradu API notifikací se nepodařilo nainstalovat", error);
+      console.error("AllyZap (Safari): náhradu API notifikací se nepodařilo nainstalovat", error);
     }
   }
   if (typeof browser !== "undefined" && browser !== chrome) {

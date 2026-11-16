@@ -1,6 +1,8 @@
 // Content script: Hlídání po nákupu – objednávky ze stránky Alzy (AlzaOrders v shared/orders.js; totéž dělá i kontrola
 // na pozadí). Číslo účtu se nikam neukládá – vezme se z požadavků, které stránka Alzy sama poslala (Performance API).
 // Na stránkách „Můj účet“ (Objednávky, detail objednávky) bez omezení četnosti. Jen se zapnutou volbou watchPurchases.
+// Stránka může běžet v kontejneru nebo anonymním okně s jiným účtem, než jaký vidí kontrola na pozadí – pak se nic
+// nenačte ani nesmaže (stav „otherAccount“); účet hlídání po nákupu přepíná kontrola na pozadí (AlzaOrders.checkAccount).
 const AlzaPurchases = {
   userIdWaitMs: 4000, // Stránka své požadavky na /api/users/<číslo>/ pošle až po načtení
 
@@ -35,4 +37,4 @@ const AlzaPurchases = {
   },
 };
 
-AlzaPurchases.init().catch((error) => console.error("Alza Price Insight – nákupy:", error));
+AlzaPurchases.init().catch((error) => console.error("AllyZap – nákupy:", error));

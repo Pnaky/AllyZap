@@ -26,8 +26,8 @@ body:
     id: version
     attributes:
       label: Verze rozšíření
-      description: V nastavení rozšíření nahoře pod názvem, nebo v chrome://extensions / about:addons.
-      placeholder: "2026.11.12"
+      description: Na stránce rozšíření dole v levém panelu, nebo v chrome://extensions / about:addons.
+      placeholder: "2026.11.16"
     validations:
       required: true
   - type: dropdown

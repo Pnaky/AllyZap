@@ -9,7 +9,8 @@ const path = require("path");
 const { loadCore } = require("./load-core");
 
 const ROOT = path.resolve(__dirname, "..");
-const read = (file) => fs.readFileSync(path.join(ROOT, file), "utf8");
+// Konce řádků sjednotit – pracovní kopie na Windows (core.autocrlf) má CRLF, regexy počítají s LF
+const read = (file) => fs.readFileSync(path.join(ROOT, file), "utf8").replace(/\r\n/g, "\n");
 const html = read("src/options/options.html");
 const script = read("src/options/options.js");
 
@@ -20,7 +21,7 @@ function loadOptionsData() {
 // Objekty z izolovaného kontextu mají jiný prototyp – porovnávat jako prostá data
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const attribute = (tag, name) => tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1];
-const settingsForm = html.match(/<form id="settings">([\s\S]*?)<\/form>/)[1];
+const settingsForm = html.match(/<form id="settings"[^>]*>([\s\S]*?)<\/form>/)[1];
 
 // === Import zálohy: nastavení ===
 
@@ -125,7 +126,7 @@ const tabPanels = [...html.matchAll(/<section\b[^>]*role="tabpanel"[^>]*>/g)].ma
 const scriptList = (name) => [...script.match(new RegExp(`const ${name} = \\[([^\\]]*)\\]`))[1].matchAll(/"([^"]+)"/g)].map(([, item]) => item);
 
 test("záložky: každé tlačítko má svůj panel a naopak (aria-controls ↔ aria-labelledby)", () => {
-  assert.equal(tabButtons.length, 9, "4 záložky nastavení + 5 záložek dat");
+  assert.equal(tabButtons.length, 11, "5 záložek nastavení + 6 záložek dat");
   assert.equal(tabPanels.length, tabButtons.length, "stejně panelů jako záložek");
   const panelsById = new Map(tabPanels.map((tag) => [attribute(tag, "id"), tag]));
   const buttonsById = new Map(tabButtons.map((tag) => [attribute(tag, "id"), tag]));
@@ -170,6 +171,23 @@ test("záložky: řada záložek má název a obsahuje jen záložky (stav „Ul
   });
   assert.equal(buttons, tabButtons.length, "každá záložka je v řadě záložek");
   assert.equal([...html.matchAll(/data-saved\b[^>]*role="status"|role="status"[^>]*data-saved\b/g)].length, 1, "stav uložení na stránce zůstal");
+});
+
+test("boční panel: skupiny Moje data a Nastavení (svislé řady záložek), panely v pohledu dat a ve formuláři", () => {
+  const side = html.match(/<aside class="side">([\s\S]*?)<\/aside>/)[1];
+  const lists = [...side.matchAll(/<div class="side-tabs" role="tablist" aria-orientation="vertical"[^>]*>([\s\S]*?)<\/div>/g)].map(([, content]) => content);
+  assert.equal(lists.length, 2);
+  assert.match(lists[0], /data-tab="lists"/);
+  assert.match(lists[1], /data-settings-tab="tracking"/);
+  assert.match(side, /id="newsLink"[\s\S]*id="helpLink"[\s\S]*id="version"/, "odkazy a verze dole v panelu");
+  assert.doesNotMatch(html, /data-view=/, "přepínač pohledů už není");
+  const dataView = html.match(/<div id="viewData" hidden>([\s\S]*?)\n    <\/div>\n      <\/main>/)[1];
+  scriptList("TABS").forEach((tab) => assert.match(dataView, new RegExp(`id="tab-${tab}"`), `panel ${tab} v pohledu dat`));
+  scriptList("SETTINGS_TABS").forEach((tab) => assert.match(settingsForm, new RegExp(`id="settings-${tab}"`), `panel ${tab} v nastavení`));
+  assert.match(settingsForm, /data-saved/, "stav Uloženo ve formuláři (showSaved)");
+  // Starší odkaz na Logy běhů (#log) vede do nastavení; průvodce otevírá nastavení
+  assert.match(script, /if \(name === "log"\) return openSettingsView\("log"\)/);
+  assert.match(read("src/welcome/welcome.html"), /href="\.\.\/options\/options\.html#s-tracking"/);
 });
 
 test("stránka nastavení: žádné id není dvakrát", () => {

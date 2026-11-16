@@ -3,10 +3,10 @@
 // na obou místech stejné. Úplnost klíčů a parametrů {0} hlídá tests/welcome.test.js
 const WELCOME_TEXTS = {
   cz: {
-    pageTitle: "Vítejte – Alza Price Insight",
+    pageTitle: "Vítejte – AllyZap",
     subtitle: "Průvodce nastavením",
     heroTitle: "Vítejte! Za minutu je nastaveno.",
-    heroLead: "Alza Price Insight si od dneška zapisuje ceny na Alze, hlídá vaše nákupní seznamy a upozorní na podezřelé slevy. Projdeme spolu čtyři kroky.",
+    heroLead: "AllyZap si od dneška zapisuje ceny na Alze, hlídá vaše nákupní seznamy a upozorní na podezřelé slevy. Projdeme spolu čtyři kroky.",
     factHistoryTitle: "Historie začíná dneškem",
     factHistory: "Ceny z doby před instalací rozšíření nezná. Čím déle běží, tím líp pozná výhodnou cenu – hodnocení ceny potřebuje aspoň 14 dní historie.",
     factAccountTitle: "Jen přihlášení a s DPH",
@@ -56,7 +56,7 @@ const WELCOME_TEXTS = {
     checkPinOk: "Ikona rozšíření je připnutá",
     checkPinNo: "Ikona zatím není připnutá",
     checkPinTip: "Tip: připněte si ikonu na lištu",
-    checkPinHelp: "Klikněte vpravo v liště prohlížeče na ikonu rozšíření (dílek skládačky) a připněte Alza Price Insight. Na ikoně pak uvidíte počet změn cen a jedním klikem otevřete přehled.",
+    checkPinHelp: "Klikněte vpravo v liště prohlížeče na ikonu rozšíření (dílek skládačky) a připněte AllyZap. Na ikoně pak uvidíte počet změn cen a jedním klikem otevřete přehled.",
     openAlza: "Otevřít {0} ↗",
 
     watchTitle: "Co a jak často hlídat",
@@ -85,7 +85,7 @@ const WELCOME_TEXTS = {
     saved: "✓ Uloženo",
     saveFailed: "Nastavení se nepodařilo uložit",
 
-    newsPageTitle: "Co je nového – Alza Price Insight",
+    newsPageTitle: "Co je nového – AllyZap",
     newsSubtitle: "Novinky v rozšíření",
     newsTitle: "Co je nového",
     newsLead: "Rozšíření je aktualizované na verzi {0}. Tohle přibylo:",
@@ -97,10 +97,10 @@ const WELCOME_TEXTS = {
     newBadge: "Nové",
   },
   sk: {
-    pageTitle: "Vitajte – Alza Price Insight",
+    pageTitle: "Vitajte – AllyZap",
     subtitle: "Sprievodca nastavením",
     heroTitle: "Vitajte! O minútu je nastavené.",
-    heroLead: "Alza Price Insight si od dnešného dňa zapisuje ceny na Alze, stráži vaše nákupné zoznamy a upozorní na podozrivé zľavy. Prejdeme spolu štyri kroky.",
+    heroLead: "AllyZap si od dnešného dňa zapisuje ceny na Alze, stráži vaše nákupné zoznamy a upozorní na podozrivé zľavy. Prejdeme spolu štyri kroky.",
     factHistoryTitle: "História začína dnes",
     factHistory: "Ceny spred inštalácie rozšírenia nepozná. Čím dlhšie beží, tým lepšie spozná výhodnú cenu – hodnotenie ceny potrebuje aspoň 14 dní histórie.",
     factAccountTitle: "Len prihlásení a s DPH",
@@ -150,7 +150,7 @@ const WELCOME_TEXTS = {
     checkPinOk: "Ikona rozšírenia je pripnutá",
     checkPinNo: "Ikona zatiaľ nie je pripnutá",
     checkPinTip: "Tip: pripnite si ikonu na lištu",
-    checkPinHelp: "Kliknite vpravo v lište prehliadača na ikonu rozšírení (dielik skladačky) a pripnite Alza Price Insight. Na ikone potom uvidíte počet zmien cien a jedným klikom otvoríte prehľad.",
+    checkPinHelp: "Kliknite vpravo v lište prehliadača na ikonu rozšírení (dielik skladačky) a pripnite AllyZap. Na ikone potom uvidíte počet zmien cien a jedným klikom otvoríte prehľad.",
     openAlza: "Otvoriť {0} ↗",
 
     watchTitle: "Čo a ako často sledovať",
@@ -179,7 +179,7 @@ const WELCOME_TEXTS = {
     saved: "✓ Uložené",
     saveFailed: "Nastavenie sa nepodarilo uložiť",
 
-    newsPageTitle: "Čo je nové – Alza Price Insight",
+    newsPageTitle: "Čo je nové – AllyZap",
     newsSubtitle: "Novinky v rozšírení",
     newsTitle: "Čo je nové",
     newsLead: "Rozšírenie je aktualizované na verziu {0}. Toto pribudlo:",
@@ -191,10 +191,10 @@ const WELCOME_TEXTS = {
     newBadge: "Nové",
   },
   hu: {
-    pageTitle: "Üdvözöljük – Alza Price Insight",
+    pageTitle: "Üdvözöljük – AllyZap",
     subtitle: "Beállítási varázsló",
     heroTitle: "Üdvözöljük! Egy perc, és kész.",
-    heroLead: "Az Alza Price Insight mától rögzíti az árakat az Alzán, figyeli a bevásárlólistáit, és figyelmeztet a gyanús akciókra. Négy lépésben beállítjuk.",
+    heroLead: "Az AllyZap mától rögzíti az árakat az Alzán, figyeli a bevásárlólistáit, és figyelmeztet a gyanús akciókra. Négy lépésben beállítjuk.",
     factHistoryTitle: "Az előzmények ma kezdődnek",
     factHistory: "A bővítmény telepítése előtti árakat nem ismeri. Minél tovább fut, annál jobban felismeri a kedvező árat – az ár értékeléséhez legalább 14 napnyi előzmény kell.",
     factAccountTitle: "Csak bejelentkezve és ÁFÁ-val",
@@ -244,7 +244,7 @@ const WELCOME_TEXTS = {
     checkPinOk: "A bővítmény ikonja ki van tűzve",
     checkPinNo: "Az ikon még nincs kitűzve",
     checkPinTip: "Tipp: tűzze ki az ikont az eszköztárra",
-    checkPinHelp: "Kattintson a böngésző eszköztárán jobbra a bővítmények ikonjára (puzzle-darab), és tűzze ki az Alza Price Insightot. Az ikonon látja az árváltozások számát, és egy kattintással megnyitja az áttekintést.",
+    checkPinHelp: "Kattintson a böngésző eszköztárán jobbra a bővítmények ikonjára (puzzle-darab), és tűzze ki az AllyZapot. Az ikonon látja az árváltozások számát, és egy kattintással megnyitja az áttekintést.",
     openAlza: "{0} megnyitása ↗",
 
     watchTitle: "Mit és milyen gyakran figyeljen",
@@ -273,7 +273,7 @@ const WELCOME_TEXTS = {
     saved: "✓ Mentve",
     saveFailed: "A beállítást nem sikerült menteni",
 
-    newsPageTitle: "Újdonságok – Alza Price Insight",
+    newsPageTitle: "Újdonságok – AllyZap",
     newsSubtitle: "A bővítmény újdonságai",
     newsTitle: "Újdonságok",
     newsLead: "A bővítmény a(z) {0} verzióra frissült. Ez lett új:",
@@ -285,10 +285,10 @@ const WELCOME_TEXTS = {
     newBadge: "Új",
   },
   en: {
-    pageTitle: "Welcome – Alza Price Insight",
+    pageTitle: "Welcome – AllyZap",
     subtitle: "Setup guide",
     heroTitle: "Welcome! You'll be set up in a minute.",
-    heroLead: "From today, Alza Price Insight records prices on Alza, watches your shopping lists and flags suspicious discounts. Let's go through four steps.",
+    heroLead: "From today, AllyZap records prices on Alza, watches your shopping lists and flags suspicious discounts. Let's go through four steps.",
     factHistoryTitle: "History starts today",
     factHistory: "It doesn't know prices from before the extension was installed. The longer it runs, the better it recognises a good price – the price rating needs at least 14 days of history.",
     factAccountTitle: "Signed in, prices incl. VAT",
@@ -338,7 +338,7 @@ const WELCOME_TEXTS = {
     checkPinOk: "The extension icon is pinned",
     checkPinNo: "The icon isn't pinned yet",
     checkPinTip: "Tip: pin the icon to the toolbar",
-    checkPinHelp: "Click the extensions icon (puzzle piece) on the right of the browser toolbar and pin Alza Price Insight. The icon then shows the number of price changes and opens the overview in one click.",
+    checkPinHelp: "Click the extensions icon (puzzle piece) on the right of the browser toolbar and pin AllyZap. The icon then shows the number of price changes and opens the overview in one click.",
     openAlza: "Open {0} ↗",
 
     watchTitle: "What to watch and how often",
@@ -367,7 +367,7 @@ const WELCOME_TEXTS = {
     saved: "✓ Saved",
     saveFailed: "The setting couldn't be saved",
 
-    newsPageTitle: "What's new – Alza Price Insight",
+    newsPageTitle: "What's new – AllyZap",
     newsSubtitle: "Extension news",
     newsTitle: "What's new",
     newsLead: "The extension has been updated to version {0}. Here's what's new:",
@@ -383,6 +383,44 @@ const WELCOME_TEXTS = {
 // Odrážky novinek po vydáních (průvodce #news) – klíč = verze z AlzaCore.releases (src/shared/core.js), nejnovější
 // první; ve všech jazycích stejný počet odrážek (hlídá tests/welcome.test.js). Jen to, co uživatele zajímá – krátce
 const RELEASE_NEWS = {
+  "2026.11.16": {
+    cz: [
+      "Peněženka poukazů: vlastní slevové kódy a dárkové poukazy na jednom místě (záložka Kódy a poukazy), v košíku je rozšíření nabídne k vložení. Připomenutí před koncem platnosti nastavíte níže.",
+      "Recenze naruby na detailu produktu: co lidem vadí, vývoj hodnocení a nejkritičtější ověřené recenze.",
+      "Košík: „Už máte“ u zboží, které jste už koupili, souhrn cen nad položkami a volitelný měsíční rozpočet.",
+      "Loni touhle dobou: jestli produkt loni v následujícím měsíci zlevnil. Dochází vám? v Mých nákupech připomene opakovaně kupované zboží.",
+      "Výpisy si pamatují: „prohlédnuto“ u otevřených produktů, vaše poznámky a skrytí produktu nebo značky (přehled v Moje data → Skryté ve výpisech).",
+      "Cena provozu ve výpisech i u televizí a monitorů (tlačítko Spočítat provoz).",
+      "Nový název AllyZap a nová stránka rozšíření s bočním panelem (Moje data a Nastavení); „!“ na ikoně upozorní na přerušenou kontrolu, například když nejste na Alze přihlášeni.",
+    ],
+    sk: [
+      "Peňaženka poukazov: vlastné zľavové kódy a darčekové poukazy na jednom mieste (záložka Kódy a poukazy), v košíku ich rozšírenie ponúkne na vloženie. Pripomenutie pred koncom platnosti nastavíte nižšie.",
+      "Recenzie naruby na detaile produktu: čo ľuďom prekáža, vývoj hodnotenia a najkritickejšie overené recenzie.",
+      "Košík: „Už máte“ pri tovare, ktorý ste už kúpili, súhrn cien nad položkami a voliteľný mesačný rozpočet.",
+      "Vlani v tomto čase: či produkt vlani v nasledujúcom mesiaci zlacnel. Dochádza vám? v Mojich nákupoch pripomenie opakovane kupovaný tovar.",
+      "Výpisy si pamätajú: „pozreté“ pri otvorených produktoch, vaše poznámky a skrytie produktu alebo značky (prehľad v Moje dáta → Skryté vo výpisoch).",
+      "Cena prevádzky vo výpisoch aj pri televízoroch a monitoroch (tlačidlo Spočítať prevádzku).",
+      "Nový názov AllyZap a nová stránka rozšírenia s bočným panelom (Moje dáta a Nastavenia); „!“ na ikone upozorní na prerušenú kontrolu, napríklad keď nie ste na Alze prihlásení.",
+    ],
+    hu: [
+      "Kupontárca: saját kuponkódok és ajándékutalványok egy helyen (Kódok és kuponok fül), a kosárban a bővítmény felajánlja a beváltásukat. A lejárat előtti emlékeztetőt lent állíthatja be.",
+      "Értékelések kifordítva a termékoldalon: mi zavarja a vásárlókat, az értékelés alakulása és a legkritikusabb ellenőrzött értékelések.",
+      "Kosár: „Már megvan” a korábban megvásárolt termékeknél, árösszesítő a tételek felett és választható havi keret.",
+      "Tavaly ilyenkor: olcsóbb lett-e a termék tavaly a következő hónapban. A Fogyóban? a Vásárlásaim lapon emlékeztet a rendszeresen vásárolt termékekre.",
+      "A listák emlékeznek: „megtekintve” a megnyitott termékeknél, saját megjegyzések, termék vagy márka elrejtése (áttekintés: Saját adatok → Elrejtve a listákban).",
+      "Üzemeltetési költség a listákban tévéknél és monitoroknál is (Üzemeltetés kiszámítása gomb).",
+      "Új név: AllyZap, és új bővítményoldal oldalsó panellel (Saját adatok és Beállítások); a „!” az ikonon megszakadt ellenőrzést jelez, például ha nincs bejelentkezve az Alzára.",
+    ],
+    en: [
+      "Voucher wallet: your own discount codes and gift vouchers in one place (Codes and vouchers tab); in the cart the extension offers to apply them. Set the reminder before they expire below.",
+      "Reviews inside out on the product page: what bothers people, how the rating has changed and the most critical verified reviews.",
+      "Cart: “You have it” on items you've already bought, a price summary above the items and an optional monthly budget.",
+      "This time last year: whether the product got cheaper in the following month last year. Running out? in My purchases reminds you of items you buy repeatedly.",
+      "Listings remember: “viewed” on products you opened, your notes, and hiding a product or a brand (overview under My data → Hidden in listings).",
+      "Running cost in listings for TVs and monitors too (the Calculate running cost button).",
+      "New name AllyZap and a new extension page with a side panel (My data and Settings); a “!” on the icon tells you a check was interrupted, for example when you are not signed in to Alza.",
+    ],
+  },
   "2026.11.12": {
     cz: [
       "Moje nákupy: všechno, co jste na Alze koupili – kdy, za kolik a do kdy platí záruka, s grafem výdajů po letech a měsících. Zapnete níže.",

@@ -156,7 +156,7 @@
 
   window.chrome = {
     runtime: {
-      id: "local.AlzaPriceInsight.Extension (UNSIGNED)",
+      id: "cz.janpnakovic.allyzap.Extension (UNSIGNED)",
       getURL: (path = "") => base + String(path).replace(/^\//, ""),
       getManifest: () => structuredClone(window.__MANIFEST__),
       getPlatformInfo: async () => ({ os: "mac", arch: "arm" }),
@@ -190,7 +190,7 @@
       setTitle: async (details) => badge.push({ title: details.title }),
     },
     i18n: {
-      getMessage: (key) => ({ name: "Alza Price Insight" })[key] || "",
+      getMessage: (key) => ({ name: "AllyZap" })[key] || "",
       getUILanguage: () => "cs-CZ",
     },
     tabs: {

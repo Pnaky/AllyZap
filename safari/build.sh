@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sestaví „Alza Price Insight.app“ s rozšířením pro Safari. Nepotřebuje Xcode – stačí Command Line Tools
+# Sestaví „AllyZap.app“ s rozšířením pro Safari. Nepotřebuje Xcode – stačí Command Line Tools
 # (xcode-select --install): swiftc, codesign, iconutil a python3 z macOS.
 #
 # Odkaz na postup: README.md
@@ -9,7 +9,7 @@ usage() {
   cat <<'EOF'
 Použití: safari/build.sh [--install]
 
-  (bez parametrů)  sestaví safari/build/Alza Price Insight.app
+  (bez parametrů)  sestaví safari/build/AllyZap.app
   --install        sestaví, nainstaluje do ~/Applications, zaregistruje rozšíření v Safari a aplikaci spustí
 
 Proměnné prostředí:
@@ -17,7 +17,7 @@ Proměnné prostředí:
   SIGN_IDENTITY=<název> podpisová identita, např. "Apple Development: Jan Novák (ABCDE12345)"
                         (seznam: security find-identity -v -p codesigning). Výchozí: jediný platný certifikát
                         Apple Development v klíčence, bez něj "-" = bez certifikátu (ad hoc)
-  BUNDLE_ID=<id>        identifikátor aplikace (výchozí local.AlzaPriceInsight)
+  BUNDLE_ID=<id>        identifikátor aplikace (výchozí cz.janpnakovic.allyzap)
   INSTALL_DIR=<složka>  kam instalovat (výchozí ~/Applications)
   BUILD_DIR=<složka>    kam sestavit (výchozí safari/build)
 EOF
@@ -27,11 +27,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPSTREAM="${UPSTREAM:-$(cd "$ROOT/.." && pwd)}"
 BUILD="${BUILD_DIR:-$ROOT/build}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
-BUNDLE_ID="${BUNDLE_ID:-local.AlzaPriceInsight}"
+BUNDLE_ID="${BUNDLE_ID:-cz.janpnakovic.allyzap}"
 EXT_ID="$BUNDLE_ID.Extension"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/Applications}"
-APP_NAME="Alza Price Insight"
-EXT_NAME="Alza Price Insight Extension"
+APP_NAME="AllyZap"
+EXT_NAME="AllyZap Extension"
 MIN_MACOS="13.0"
 JSC=/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -86,8 +86,28 @@ OBJ="$BUILD/obj"
 
 # --- 1. Soubory rozšíření ---------------------------------------------------------------------------------------
 step "Rozšíření $VERSION pro Safari"
+# Mazat jen vlastní složku sestavení: výchozí safari/build, prázdnou, nebo se značkou z dřívějšího sestavení. Nikdy
+# kořen, domov, zdrojáky ani složku, ve které zdrojáky jsou (špatně nastavené BUILD_DIR by je smazalo)
+BUILD_MARK=".alza-safari-build"
+mkdir -p "$BUILD"
+BUILD="$(cd "$BUILD" && pwd -P)"
+ROOT_REAL="$(cd "$ROOT" && pwd -P)"
+UPSTREAM_REAL="$(cd "$UPSTREAM" && pwd -P)"
+case "$ROOT_REAL/" in "$BUILD/"*) die "BUILD_DIR=$BUILD obsahuje zdrojáky (safari/) – zvolte jinou složku" ;; esac
+case "$UPSTREAM_REAL/" in "$BUILD/"*) die "BUILD_DIR=$BUILD obsahuje zdrojáky rozšíření – zvolte jinou složku" ;; esac
+[ "$BUILD" != "$(cd "$HOME" && pwd -P)" ] || die "BUILD_DIR nesmí být domovská složka"
+for name in _locales css img src; do
+  case "$BUILD/" in "$UPSTREAM_REAL/$name/"*) die "BUILD_DIR=$BUILD je uvnitř zdrojáků ($name/)" ;; esac
+done
+if [ "$BUILD" != "$ROOT_REAL/build" ] && [ ! -e "$BUILD/$BUILD_MARK" ] && [ -n "$(ls -A "$BUILD")" ]; then
+  die "BUILD_DIR=$BUILD není prázdná ani z dřívějšího sestavení – nesmažu ji"
+fi
+APP="$BUILD/$APP_NAME.app"
+APPEX="$APP/Contents/PlugIns/$EXT_NAME.appex"
+OBJ="$BUILD/obj"
 rm -rf "$BUILD"
 mkdir -p "$OBJ"
+touch "$BUILD/$BUILD_MARK"
 /usr/bin/python3 -I "$ROOT/tools/prepare.py" "$UPSTREAM" "$ROOT" "$BUILD/web-extension"
 
 if [ -x "$JSC" ]; then
@@ -104,11 +124,11 @@ fi
 step "Překlad Swiftu ($ARCH, macOS $MIN_MACOS+)"
 SWIFT_FLAGS=(-sdk "$SDK" -target "$ARCH-apple-macos$MIN_MACOS" -swift-version 5 -O -whole-module-optimization)
 
-swiftc "${SWIFT_FLAGS[@]}" -module-name AlzaPriceInsightExtension -parse-as-library -application-extension \
+swiftc "${SWIFT_FLAGS[@]}" -module-name AllyZapExtension -parse-as-library -application-extension \
   "$ROOT/macos/Extension/SafariWebExtensionHandler.swift" "$ROOT/macos/Shared/AlzaNotifications.swift" \
   -Xlinker -e -Xlinker _NSExtensionMain -o "$OBJ/extension"
 
-swiftc "${SWIFT_FLAGS[@]}" -module-name AlzaPriceInsight \
+swiftc "${SWIFT_FLAGS[@]}" -module-name AllyZap \
   "$ROOT/macos/App/main.swift" "$ROOT/macos/App/AppDelegate.swift" "$ROOT/macos/App/MainWindowController.swift" \
   "$ROOT/macos/Shared/AlzaNotifications.swift" -o "$OBJ/app"
 
@@ -124,7 +144,7 @@ iconutil -c icns "$OBJ/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns
 # Rozšíření pro Safari = složka Resources rozšíření (manifest.json v ní)
 ditto "$BUILD/web-extension" "$APPEX/Contents/Resources"
 
-COPYRIGHT="Alza Price Insight © Jan Pňakovič, GNU GPL v3.0. Bez vztahu k Alza.cz a.s."
+COPYRIGHT="AllyZap © Jan Pňakovič, GNU GPL v3.0. Bez vztahu k Alza.cz a.s."
 
 cat >"$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -236,13 +256,20 @@ if [ "$INSTALL" = 1 ]; then
   step "Instalace do $INSTALL_DIR"
   pkill -x "$APP_NAME" 2>/dev/null && sleep 1 || true # Běžící starší verze aplikace
   mkdir -p "$INSTALL_DIR"
+  # Nahradit jen vlastní aplikaci (stejný identifikátor) a až po úspěšném zkopírování nové – při chybě zůstane stará
+  if [ -e "$TARGET" ]; then
+    installed_id="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$TARGET/Contents/Info.plist" 2>/dev/null || true)"
+    [ "$installed_id" = "$BUNDLE_ID" ] || die "$TARGET je jiná aplikace ($installed_id) – nepřepíšu ji"
+  fi
+  rm -rf "$TARGET.new"
+  ditto "$APP" "$TARGET.new" || die "kopírování do $INSTALL_DIR selhalo – nainstalovaná verze zůstává"
   rm -rf "$TARGET"
-  ditto "$APP" "$TARGET"
+  mv "$TARGET.new" "$TARGET"
   # Safari má znát jen nainstalovanou kopii – sestavenou v build/ odregistrovat
   "$LSREGISTER" -u "$APP" >/dev/null 2>&1 || true
   pluginkit -r "$APPEX" >/dev/null 2>&1 || true
   "$LSREGISTER" -f -R "$TARGET"
-  pluginkit -a "$TARGET/Contents/PlugIns/$EXT_NAME.appex" || true
+  pluginkit -a "$TARGET/Contents/PlugIns/$EXT_NAME.appex" || printf '\nUpozornění: rozšíření se nepodařilo zaregistrovat (pluginkit) – zapněte ho v Safari ručně, případně spusťte aplikaci.\n' >&2
   [ "${NO_OPEN:-0}" = 1 ] || open "$TARGET"
   printf '\nNainstalováno: %s\nDalší kroky jsou v okně aplikace a v README.md.\n' "$TARGET"
 fi

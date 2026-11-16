@@ -14,6 +14,7 @@ Object.assign(AlzaPriceTracker, {
     price: ".c5", // Cena řádku: text „31 490 Kč“, nebo cenový box s uplatněným procentním kódem
     priceBox: ".ads-pb, .js-price-box",
     priceValue: ".js-price-box__primary-price__value, .ads-pb__price-value",
+    priceStruck: ".originalPrice, del, s, strike", // Přeškrtnutá původní cena v buňce ceny zlevněné položky
     discountBox: ".ads-pb--discount",
     link: 'a[href*="-d"][href$=".htm"]',
     voucherRow: "#discountContainerDiscountCode tr", // Uplatněné poukazy: kód | částka | platnost | podmínka | ×
@@ -30,6 +31,29 @@ Object.assign(AlzaPriceTracker, {
     return String(text).match(/\d+(?:\s\d{3})*(?:,\d{1,2})?/)?.[0] || "";
   },
 
+  // Text ceny k zaplacení z buňky ceny řádku: hlavní cena cenového boxu (kód uplatněný v řádku), jinak text buňky bez
+  // přeškrtnuté původní ceny. Zlevněná položka má v buňce obě – „93 320 Kč“ v .originalPrice a pod ní „74 990 Kč“;
+  // první částka by byla ta přeškrtnutá a hodnocení by hlásilo „o 24 % nad obvyklou cenou“ u zboží za obvyklou cenu
+  getBasketCellPriceText(cell) {
+    const s = this.basketSelectors;
+    const main = cell?.querySelector(s.priceValue);
+    if (main) return main.textContent || "";
+    const struck = [...(cell?.querySelectorAll?.(s.priceStruck) || [])].map((node) => node.textContent || "").filter((text) => text.trim());
+    return struck.reduce((text, part) => text.replace(part, " "), cell?.textContent || "");
+  },
+
+  // Cena řádku košíku za všechny kusy (to, co se platí) a jestli je v ní uplatněný procentní kód: cenový box v řádku
+  // („Slevový kód -5 %“, cena s kódem, přeškrtnutá), bez něj text „31 490 Kč“, u zlevněné položky s přeškrtnutou
+  // původní cenou nad ním (getBasketCellPriceText). value null = cenu nejde přečíst. Čtou ji kódy (updateBasketCodes),
+  // hodnocení cen (basket-insights.js) i součet košíku (basket-vouchers.js)
+  getBasketRowPrice(row) {
+    const s = this.basketSelectors;
+    const cell = row.querySelector(s.price);
+    const box = cell?.querySelector(s.priceBox);
+    const value = AlzaCore.parsePositivePrice(this.getFirstPriceText(this.getBasketCellPriceText(cell)));
+    return { value, discounted: Boolean(box?.matches(s.discountBox)) };
+  },
+
   isBasketPage() {
     return Boolean(document.querySelector(this.basketSelectors.codeInput) && document.querySelector(this.basketSelectors.continueButton));
   },
@@ -38,7 +62,7 @@ Object.assign(AlzaPriceTracker, {
     if (this.state.basketCodesReady || !this.isBasketPage()) return;
     this.state.basketCodesReady = true;
     this.state.basketMissing = null;
-    const refresh = () => this.updateBasketCodes().catch((error) => console.error("Alza Price Tracker – kódy v košíku:", error));
+    const refresh = () => this.updateBasketCodes().catch((error) => console.error("AllyZap – kódy v košíku:", error));
     refresh();
     let timer = null;
     this.observeBasket(() => {
@@ -74,7 +98,7 @@ Object.assign(AlzaPriceTracker, {
             try {
               callback();
             } catch (error) {
-              console.error("Alza Price Tracker – změna košíku:", error);
+              console.error("AllyZap – změna košíku:", error);
             }
           }),
         { ignoreOwn: true }
@@ -94,12 +118,8 @@ Object.assign(AlzaPriceTracker, {
         const countInput = row.querySelector(s.count);
         if (!link || !countInput) return null;
         const count = parseInt(countInput.value, 10) || 1;
-        // Uplatněný procentní kód: cenový box v řádku („Slevový kód -5 %“, cena s kódem, přeškrtnutá); bez něj jen text
-        // „31 490 Kč“. Z boxu jen hlavní cena – celý text by slepil obě čísla do jednoho
-        const cell = row.querySelector(s.price);
-        const box = cell?.querySelector(s.priceBox);
-        const value = AlzaCore.parsePositivePrice(this.getFirstPriceText((cell?.querySelector(s.priceValue) || cell)?.textContent || ""));
-        return { url: new URL(link.getAttribute("href"), window.location.origin).href, name: link.textContent.replace(/\s+/g, " ").trim(), count, value, discounted: Boolean(box?.matches(s.discountBox)) };
+        const { value, discounted } = this.getBasketRowPrice(row);
+        return { url: new URL(link.getAttribute("href"), window.location.origin).href, name: link.textContent.replace(/\s+/g, " ").trim(), count, value, discounted };
       })
       .filter((item) => item && item.value);
     if (items.length === 0) {

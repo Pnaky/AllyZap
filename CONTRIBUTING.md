@@ -1,6 +1,6 @@
 # Jak přispět
 
-Díky za zájem! Projekt vzniká ve volném čase, pull requesty přijímám podle uvážení. U větší změny prosím nejdřív založte [issue](https://github.com/Pnaky/Alza-Price-Insight/issues) a domluvíme se, ať práce nepřijde vniveč.
+Díky za zájem! Projekt vzniká ve volném čase, pull requesty přijímám podle uvážení. U větší změny prosím nejdřív založte [issue](https://github.com/Pnaky/AllyZap/issues) a domluvíme se, ať práce nepřijde vniveč.
 
 ## Chyby a nápady
 
@@ -10,12 +10,13 @@ Díky za zájem! Projekt vzniká ve volném čase, pull requesty přijímám pod
 
 ## Vývoj
 
-Bez buildu a bez závislostí. Jak načíst rozbalenou verzi do Chrome a Firefoxu, popisuje [README](README.md#pro-vývojáře).
+Projekt vyvíjím společně s [Claude Code](https://claude.com/claude-code), viz [Jak projekt vzniká](README.md#jak-projekt-vzniká). Bez buildu a bez závislostí. Jak načíst rozbalenou verzi do Chrome a Firefoxu, popisuje [README](README.md#pro-vývojáře).
 
 Pravidla:
 
 - **Jeden kód pro Chrome i Firefox.** Každou změnu vyzkoušejte v obou prohlížečích. Kód jen pro jeden prohlížeč patří do `src/chrome/` nebo `src/firefox/`.
-- **Testy:** `node --test "tests/*.test.js"` (stačí Node.js) musí projít. Ke změně v jádře (`src/shared/`) přidejte test.
+- **Testy:** `node --test "tests/*.test.js"` (stačí Node.js) musí projít – bez přeskočených (`skip`, `todo`) testů. Ke změně v jádře (`src/shared/`) přidejte test, k opravě chyby test, který ji zachytí.
+- **ESLint:** `npx eslint@10 .` musí projít bez chyb (`eslint.config.mjs` hlídá jen chyby – nedefinované názvy, nedosažitelný kód, HTML z řetězce, `eval` –, ne styl).
 - **Překlady:** texty jsou ve čtyřech jazycích (cs, sk, hu, en). Nový text doplňte do všech, testy hlídají, že žádný nechybí.
 - **Nápověda:** když měníte, co rozšíření umí, upravte i `src/help/`.
 - **Úložiště:** do `chrome.storage` zapisuje jen `src/shared/store.js`.

@@ -1,6 +1,6 @@
 // Safari: úpravy průvodce nastavením. Načítá se hned za welcome-texts.js (před welcome.js).
 // - Texty o notifikacích a ikoně na liště popisují Chrome / Windows – nahradí je postup pro Safari a macOS.
-//   Notifikace v Safari posílá aplikace Alza Price Insight (safari/notifications.js), ikona se nepřipíná.
+//   Notifikace v Safari posílá aplikace AllyZap (safari/notifications.js), ikona se nepřipíná.
 // - Safari rozšíření na weby nepustí, dokud to uživatel neschválí. Bez přístupu na Alzu rozšíření nic neukáže
 //   ani nezkontroluje na pozadí – nad průvodcem se proto ukáže výzva s tlačítkem (permissions.request).
 (() => {
@@ -10,7 +10,7 @@
     cz: {
       checkNotificationsOk: "Notifikace jsou v macOS povolené",
       checkNotificationsHelp:
-        "V Safari notifikace posílá aplikace Alza Price Insight. Klikněte na Vyzkoušet notifikace v kroku 3. Když nic nepřijde, povolte je v Nastavení systému → Oznámení → Alza Price Insight a vypněte režim Soustředění.",
+        "V Safari notifikace posílá aplikace AllyZap. Klikněte na Vyzkoušet notifikace v kroku 4. Když nic nepřijde, povolte je v Nastavení systému → Oznámení → AllyZap a vypněte režim Soustředění.",
       checkPinTip: "Tip: mějte ikonu na liště Safari",
       checkPinHelp:
         "Safari po zapnutí rozšíření přidá jeho ikonu na lištu vedle adresního řádku. Když tam není, zvolte Zobrazení → Upravit nástrojový panel… a přetáhněte ji na lištu. Na ikoně pak uvidíte počet změn cen a jedním klikem otevřete přehled.",
@@ -19,12 +19,12 @@
         "Safari pustí rozšíření na web, až když to schválíte. Bez přístupu na Alzu se ceny nezobrazí ani nehlídají na pozadí. Klikněte na tlačítko a v nabídce Safari zvolte Vždy povolit.",
       safariAccessButton: "Povolit přístup na Alzu",
       safariAccessDenied:
-        "Přístup zatím povolený není. Můžete ho povolit i v Safari → Nastavení → Rozšíření → Alza Price Insight → Upravit webové stránky.",
+        "Přístup zatím povolený není. Můžete ho povolit i v Safari → Nastavení → Rozšíření → AllyZap → Upravit webové stránky.",
     },
     sk: {
       checkNotificationsOk: "Notifikácie sú v macOS povolené",
       checkNotificationsHelp:
-        "V Safari notifikácie posiela aplikácia Alza Price Insight. Kliknite na Vyskúšať notifikácie v kroku 3. Keď nič nepríde, povoľte ich v Systémových nastaveniach → Hlásenia → Alza Price Insight a vypnite režim Sústredenie.",
+        "V Safari notifikácie posiela aplikácia AllyZap. Kliknite na Vyskúšať notifikácie v kroku 4. Keď nič nepríde, povoľte ich v Systémových nastaveniach → Hlásenia → AllyZap a vypnite režim Sústredenie.",
       checkPinTip: "Tip: majte ikonu na lište Safari",
       checkPinHelp:
         "Safari po zapnutí rozšírenia pridá jeho ikonu na lištu vedľa adresného riadka. Keď tam nie je, zvoľte Zobraziť → Prispôsobiť panel s nástrojmi… a presuňte ju na lištu. Na ikone potom uvidíte počet zmien cien a jedným kliknutím otvoríte prehľad.",
@@ -33,12 +33,12 @@
         "Safari pustí rozšírenie na web, až keď to schválite. Bez prístupu na Alzu sa ceny nezobrazia ani nesledujú na pozadí. Kliknite na tlačidlo a v ponuke Safari zvoľte Vždy povoliť.",
       safariAccessButton: "Povoliť prístup na Alzu",
       safariAccessDenied:
-        "Prístup zatiaľ povolený nie je. Môžete ho povoliť aj v Safari → Nastavenia → Rozšírenia → Alza Price Insight → Upraviť webové stránky.",
+        "Prístup zatiaľ povolený nie je. Môžete ho povoliť aj v Safari → Nastavenia → Rozšírenia → AllyZap → Upraviť webové stránky.",
     },
     hu: {
       checkNotificationsOk: "Az értesítések engedélyezve vannak a macOS-ben",
       checkNotificationsHelp:
-        "Safariban az értesítéseket az Alza Price Insight alkalmazás küldi. Kattintson az Értesítések kipróbálása gombra a 3. lépésben. Ha nem érkezik semmi, engedélyezze őket a Rendszerbeállítások → Értesítések → Alza Price Insight alatt, és kapcsolja ki a Fókusz módot.",
+        "Safariban az értesítéseket az AllyZap alkalmazás küldi. Kattintson az Értesítések kipróbálása gombra a 4. lépésben. Ha nem érkezik semmi, engedélyezze őket a Rendszerbeállítások → Értesítések → AllyZap alatt, és kapcsolja ki a Fókusz módot.",
       checkPinTip: "Tipp: tartsa az ikont a Safari eszközsorán",
       checkPinHelp:
         "A bővítmény bekapcsolása után a Safari a címsor mellé, az eszközsorra teszi az ikonját. Ha nincs ott, válassza a Nézet → Eszközsor testreszabása… menüpontot, és húzza az ikont az eszközsorra. Az ikonon látja az árváltozások számát, és egy kattintással megnyitja az áttekintést.",
@@ -47,12 +47,12 @@
         "A Safari csak az Ön jóváhagyása után engedi a bővítményt a weboldalakra. Az Alza elérése nélkül az árak nem jelennek meg, és a háttérfigyelés sem működik. Kattintson a gombra, és a Safari ablakában válassza a Mindig engedélyez lehetőséget.",
       safariAccessButton: "Alza elérésének engedélyezése",
       safariAccessDenied:
-        "A hozzáférés még nincs engedélyezve. A Safari → Beállítások → Bővítmények → Alza Price Insight → Webhelyek szerkesztése alatt is engedélyezheti.",
+        "A hozzáférés még nincs engedélyezve. A Safari → Beállítások → Bővítmények → AllyZap → Webhelyek szerkesztése alatt is engedélyezheti.",
     },
     en: {
       checkNotificationsOk: "Notifications are allowed in macOS",
       checkNotificationsHelp:
-        "In Safari, notifications are sent by the Alza Price Insight app. Click Test notifications in step 3. If nothing shows up, allow them in System Settings → Notifications → Alza Price Insight and turn off Focus.",
+        "In Safari, notifications are sent by the AllyZap app. Click Test notifications in step 4. If nothing shows up, allow them in System Settings → Notifications → AllyZap and turn off Focus.",
       checkPinTip: "Tip: keep the icon on the Safari toolbar",
       checkPinHelp:
         "Once the extension is turned on, Safari adds its icon to the toolbar next to the address bar. If it isn't there, choose View → Customize Toolbar… and drag it to the toolbar. The icon then shows the number of price changes and opens the overview in one click.",
@@ -61,7 +61,7 @@
         "Safari only lets an extension onto a website after you approve it. Without access to Alza, prices are not shown and nothing is watched in the background. Click the button and choose Always Allow in Safari's prompt.",
       safariAccessButton: "Allow access to Alza",
       safariAccessDenied:
-        "Access is not allowed yet. You can also allow it in Safari → Settings → Extensions → Alza Price Insight → Edit Websites.",
+        "Access is not allowed yet. You can also allow it in Safari → Settings → Extensions → AllyZap → Edit Websites.",
     },
   };
 

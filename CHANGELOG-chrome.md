@@ -1,6 +1,56 @@
 # Changelog – Chrome Web Store
 
-## Nevydáno
+## 2026.11.16
+
+- Popup: tlačítko Co je nového jen do přečtení novinek a bez prázdného řádku se šipkou, když nejsou žádné kódy ani poukazy
+- Košík a seznam: cena jiného stavu (Levněji rozbalený) a množstevní slevy se obnoví i při kontrole na pozadí a po otevření detailu – dřív mohly zůstat staré
+- Košík: u zlevněné položky se hodnotí cena k zaplacení, ne přeškrtnutá původní (mylné „nad obvyklou cenou“); platí i pro součet košíku u rozpočtu a poukazů
+- Graf a tabulka historie: doba, kdy cena nebyla sledovaná, je vyznačená šedým pásem „nesledováno“ – čára přes ni nevede
+- Moje data: nová záložka Skryté ve výpisech – přehled skrytých produktů a značek, odkud je jde vrátit
+- Opravy z auditu 2026-11-16: hodnocení ceny, podezřelá sleva, přeškrtnutá cena a Loni touhle dobou počítají jen dobu, kdy byla cena opravdu sledovaná – delší pauza mezi návštěvami se nebere jako známá cena (produkty viděné jen při procházení dostanou hodnocení později)
+- Peněženka poukazů: poukaz se označí jako použitý, jen když byl opravdu vložený v košíku; kód je v bublině košíku a v notifikaci skrytý až na poslední znaky; úpravu poukazu jde zrušit; přesnější čtení e-mailu (1.500 Kč, 100,- Kč), nejisté údaje zůstanou prázdné
+- Dárkový šek je platba – nesnižuje cenu koupeného zboží (úspora v Mých nákupech, zlevnění po nákupu)
+- Moje nákupy se při přihlášení jiného účtu oddělí a po návratu vrátí; druhý účet v kontejneru nebo anonymním okně už nemaže nákupy ani připomínky
+- Odhlášení na jedné Alze nezastaví kontrolu ostatních; upozornění jmenuje doménu
+- Skrytí značky i u televizí a monitorů; značka se bere z Alzina filtru Značka (víceslovné značky, názvy začínající obecným slovem); skryté produkty se nepočítají do filtru, řazení ani Spočítat provoz
+- Spočítat provoz jen u televizí a monitorů; při chybách Alzy se zastaví a po odmítnutí pár minut počká
+- Košík: souhrn a štítky podle ceny v košíku; Recenze naruby bez vět typu „nic jsem nenašel“, příklad výtky kliknutím, srozumitelné chyby; poznámka se při chybě uložení neztratí
+- Vyplatí se AlzaPlus+? počítá jen nákupy za cenu AlzaPlus+; Dochází vám? počítá s kusy; faktura neotevře dobropis
+- Historické minimum bez cashbacku i u dřív uložených cen; návrh čistky nemaže historii zboží koupeného za poslední rok
+- Záloha: text říká, že obsahuje poukazy s kódy, poznámky a skryté produkty; import nepřepíše novější poznámku; diagnostika skryje i údaje o nákupu u hlídaného zboží
+- Stránka rozšíření bez posuvníku v nastavení, bublina nápovědy celá v okně; Co je nového pro toto vydání
+- Odložené notifikace přijdou po startu prohlížeče hned, nedoručené se zkusí znovu za 5 minut; cílová cena se po přerušené kontrole neohlásí dvakrát
+- Cashback a výkup (šrotovné) se nepočítají do aktuální, obvyklé, nejnižší za 30 dní, nejvyšší prodejní ceny ani historického minima – platí jen za podmínek; podezřelá sleva srovnává jen cenu k zaplacení
+- Cílová cena se ohlásí i s cashbackem / výkupem, s poznámkou „s cashbackem“
+- Detail produktu: výstrahy v jednom boxu, doplňující informace jako přehledný seznam (Zobrazit rozbalený kus, Objednávka), Poznámka, Recenze naruby a Kopírovat nabídku jako ikony
+- Košík: štítky v jednom řádku u ceny, podezřelá sleva a přeškrtnutá cena v jednom štítku
+- Graf historie: přiblížení (tažení myší, Ctrl + kolečko, 24 h / 7 dní / 30 dní), poslední kontrola v záhlaví
+- Nový název AllyZap (dřív Alza Price Insight); data, nastavení i aktualizace zůstávají
+- Přerušená kontrola (nejste na Alze přihlášeni, ceny bez DPH, Alza blokuje): oranžový „!“ na ikoně a upozornění nahoře v popupu s tlačítky Přihlásit se na Alze a Zkontrolovat znovu; po přihlášení na Alze se kontrola spustí hned; přerušení se ohlásí i u zboží hlídaného jen kvůli nákupu
+- Vyzkoušet notifikace: pod tlačítkem rada podle systému (Windows / macOS) a výsledek zkoušky (macOS: povolit i Google Chrome Helper (Alerts), Soustředění, notifikace při sdílení obrazovky; issue #5)
+- Stránka rozšíření s bočním panelem: Moje data (seznamy, produkty, nákupy, kódy, uložená data) a Nastavení (volby a Logy běhů); Co je nového, Průvodce a Nápověda dole v panelu
+- Popup: tlačítko Moje data a ozubené kolo rovnou do nastavení; Novinky jen dokud nejsou přečtené, bez odkazu na Alzu
+- Detail produktu: Poznámka a Recenze naruby se dalším kliknutím zavřou (poznámka i klávesou Esc) a po překreslení karty zůstanou otevřené
+- Hlídání po nákupu: víc nákupů téhož zboží se hlídá každý zvlášť (cena i lhůta z téže objednávky); po přihlášení jiného účtu se nákupy předchozího zapomenou
+- Hodnocení ceny a kontrola přeškrtnuté ceny počítají jen dny se známou cenou; vyprázdněný hlídaný seznam se po otevření vyprázdní i v rozšíření
+- Opravy z auditu (issue #4): nepovedená notifikace se zkusí znovu, nový nákup téhož zboží dostane vlastní upozornění, nenačtená objednávka se načte znovu za 30 minut
+- Opravy z auditu: přesná procenta slevy ve filtru (30 % už není 29 %), úspora za kusy v centech, neexistující datum akce se nepoužije, balení „2 × 3 × 4 ks“ a „2 balení po 60 ks“
+- Opravy z auditu: smazání dat stáhne novou zálohu, když se data mezitím změnila; úklid starých dat nesmaže mezitím obnovený produkt; diagnostika skryje koupené zboží i po čase
+- Lhůta pro vrácení v upozornění „nejméně do“ (počítá se opatrně od objednávky); přesnější popis tlačítka Nahlásit chybu
+- Peněženka poukazů: vlastní slevové kódy a dárkové poukazy (vložte text e-mailu, vyplní se samy), v košíku bublina s nabídkou k vložení a kolik chybí do minima, uložení poukazu z košíku, použitý poukaz se pozná z objednávky
+- Připomínka poukazu týden před koncem platnosti a poslední den
+- Slevové kódy u produktů přesunuty z popupu do záložky Kódy a poukazy v nastavení
+- Košík: „Už máte“ u zboží, které jste už koupili
+- Košík: souhrn nad položkami – kolik je nad / pod obvyklou cenou, kde počkat, podezřelé slevy
+- Měsíční rozpočet (volitelný): v košíku kolik jste tento měsíc utratili, s košíkem a kolik zbývá
+- Moje nákupy: odhad, kolik ušetří AlzaPlus+ za poslední rok
+- Moje nákupy: faktura (PDF) k nákupu jedním klikem
+- Loni touhle dobou: na detailu i v košíku, jestli produkt loni v následujícím měsíci zlevnil (Black Friday)
+- Moje nákupy: Dochází vám? – opakovaně kupované zboží, které brzy dojde, s dnešní cenou
+- Moje nákupy: výdaje podle kategorií a úspora proti běžné ceně v den nákupu
+- Výpisy: „prohlédnuto“ u otevřených produktů, vaše poznámky, skrytí produktu nebo značky; poznámka k produktu na detailu
+- Cena provozu i u televizí a monitorů ve výpisech (tlačítko Spočítat provoz, spotřeba i z otevřeného detailu)
+- Detail produktu: Recenze naruby – co lidem vadí, vývoj hodnocení, nejkritičtější ověřené recenze
 
 ## 2026.11.12
 

@@ -20,6 +20,8 @@ const ownedView = { sort: "bought", desc: true, page: 0 };
 let ownedRows = [];
 let ownedOrders = {}; // Objednávky po doménách ({ číslo: [čas, částka] }) – součet za vybrané období
 let ownedSyncing = false;
+let ownedHistories = {}; // Historie cen koupených produktů { klíč: záznamy } – úspory, AlzaPlus+, Dochází vám?
+const OWNED_CATEGORY_LIMIT = 12; // Kategorií v tabulce; zbytek jako „ostatní“
 
 // Graf výdajů: nákupy v jiné měně se do společného sloupce přepočítají přibližným kurzem (kolik Kč je jednotka měny).
 // Jen pro výšku sloupců – částky v bublině a v tabulce zůstávají v původní měně. Kurzy se nikde nestahují
@@ -140,6 +142,77 @@ function renderOwnedSelection(matches, period, narrowed) {
   box.textContent = parts.join(" · ");
 }
 
+// Historie cen všech koupených produktů jedním čtením
+async function loadOwnedHistories(rows) {
+  const keys = [...new Set(rows.map((row) => row.key))];
+  if (keys.length === 0) return {};
+  const prefix = AlzaCore.storagePrefixes.history;
+  const stored = await chrome.storage.local.get(keys.map((key) => `${prefix}${key}`));
+  return Object.fromEntries(keys.map((key) => [key, stored[`${prefix}${key}`]]).filter(([, entries]) => Array.isArray(entries)));
+}
+
+// Výdaje vybraných nákupů (období, hledání, filtr) podle hlavní kategorie Alzy – součet sloupce Celkem (bez vráceného;
+// starší nákupy bez ceny kusu se jen počítají) – a úspora proti běžné ceně v den nákupu (AlzaCore.getOwnedSaving)
+function renderOwnedCategories(matches) {
+  const block = document.getElementById("ownedCategories");
+  const kept = matches.filter((row) => !row.buy.ret);
+  block.hidden = kept.length === 0;
+  if (block.hidden) return;
+  const groups = new Map();
+  const savings = {};
+  let savedCount = 0;
+  let knownCount = 0;
+  kept.forEach((row) => {
+    const name = (Array.isArray(row.product.cat) && row.product.cat[0]) || t("ownedCategoryOther");
+    const group = groups.get(name) || { name, count: 0, money: {}, value: 0 };
+    group.count += row.buy.n || 1; // Kusy
+    const total = ownedRowTotal(row);
+    if (total !== null) {
+      group.money[row.product.domain] = (group.money[row.product.domain] || 0) + total;
+      group.value += total * (OWNED_RATES[AlzaCore.domains[row.product.domain].currency] || 1);
+    }
+    groups.set(name, group);
+    const saving = AlzaCore.getOwnedSaving(row.buy, ownedHistories[row.key], row.product.domain);
+    if (saving !== null) {
+      knownCount++;
+      if (saving > 0) {
+        savedCount++;
+        savings[row.product.domain] = (savings[row.product.domain] || 0) + saving;
+      }
+    }
+  });
+  const sorted = [...groups.values()].sort((a, b) => b.value - a.value || b.count - a.count);
+  const shown = sorted.slice(0, OWNED_CATEGORY_LIMIT);
+  const rest = sorted.slice(OWNED_CATEGORY_LIMIT);
+  if (rest.length > 0) {
+    const other = { name: t("ownedCategoryRest", rest.length), count: 0, money: {}, value: 0 };
+    rest.forEach((group) => {
+      other.count += group.count;
+      other.value += group.value;
+      Object.entries(group.money).forEach(([domain, amount]) => (other.money[domain] = (other.money[domain] || 0) + amount));
+    });
+    shown.push(other);
+  }
+  document.getElementById("ownedCategoriesTitle").textContent = t("ownedCategoriesTitle", groups.size);
+  document.getElementById("ownedSavings").textContent =
+    knownCount > 0 ? t("ownedSavings", ownedMoney(savings) || "0", savedCount, knownCount) : t("ownedSavingsUnknown");
+  const max = Math.max(...shown.map((group) => group.value), 1);
+  const table = document.createElement("table");
+  const head = table.createTHead().insertRow();
+  ["colOwnedCategory", "colOwnedCount", "colOwnedSpent", ""].forEach((label) => head.appendChild(Object.assign(document.createElement("th"), { textContent: label ? t(label) : "" })));
+  const body = table.createTBody();
+  shown.forEach((group) => {
+    const row = body.insertRow();
+    cell(row, group.name).title = group.name;
+    cell(row, String(group.count));
+    cell(row, ownedMoney(group.money) || "–");
+    const bar = Object.assign(document.createElement("span"), { className: "category-share" });
+    bar.appendChild(Object.assign(document.createElement("span"), { style: `width: ${Math.round((group.value / max) * 100)}%` }));
+    cell(row, bar);
+  });
+  document.getElementById("ownedCategoriesTable").replaceChildren(table);
+}
+
 // U konce záruky i odkud je: délka podle Alzy („36 měs.“), nebo „odhad“ (24 měsíců), dokud se ji nepodařilo zjistit
 function ownedWarrantyCell(row, { state, until, daysLeft }, buy) {
   const date = formatDate(until);
@@ -187,6 +260,7 @@ function renderOwnedTable() {
     return !query || [name, category, product.brand || ""].some((text) => text.toLowerCase().includes(query));
   });
   renderOwnedSelection(matches, period, query !== "" || filter !== "all");
+  renderOwnedCategories(matches);
 
   if (matches.length === 0) {
     container.replaceChildren(Object.assign(document.createElement("p"), { className: "empty", textContent: t(ownedRows.length === 0 ? "noneYet" : "nothingFound") }));
@@ -224,7 +298,11 @@ function renderOwnedTable() {
       orderLink.setAttribute("aria-label", t("ownedOrderLink"));
       orderLink.replaceChildren(AlzaIcons.create(document, "open", { solo: true }));
     }
-    cell(row, orderLink || "");
+    const actions = document.createElement("span");
+    actions.className = "owned-actions";
+    if (orderLink) actions.appendChild(orderLink);
+    if (orderUrl) actions.appendChild(ownedInvoiceButton(item));
+    cell(row, actions);
   });
   container.replaceChildren(table);
 
@@ -489,6 +567,31 @@ function renderOwnedMonths(year) {
   box.replaceChildren(buildOwnedChart(columns, { label: t("ownedMonthsTitle", year), legend, className: "owned-chart--months" }));
 }
 
+// Faktura (PDF) k nákupu – odkaz zjistí služba na pozadí z detailu objednávky až po kliknutí (nese přístupový token,
+// proto se neukládá); PDF se otevře v nové kartě
+function ownedInvoiceButton({ key, product, buy }) {
+  const button = document.createElement("button");
+  Object.assign(button, { type: "button", className: "owned-invoice", title: t("ownedInvoice") });
+  button.setAttribute("aria-label", t("ownedInvoice"));
+  button.appendChild(AlzaIcons.create(document, "download", { solo: true }));
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    setText(ownedInfo, "ownedInvoiceLoading");
+    try {
+      const reply = await chrome.runtime.sendMessage({ action: "ownedInvoice", domain: product.domain, order: buy.o, product: key });
+      if (reply?.url) {
+        await chrome.tabs.create({ url: reply.url });
+        ownedInfo.textContent = "";
+      } else setText(ownedInfo, reply?.error ? "ownedInvoiceFailed" : "ownedInvoiceNone", reply?.error || "");
+    } catch (error) {
+      setText(ownedInfo, "ownedInvoiceFailed", error?.message || error);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return button;
+}
+
 async function renderOwned() {
   const settings = await AlzaCore.getSettings();
   const { rows, products, orders, sync, pending, warrantyPending } = await loadOwned();
@@ -515,9 +618,92 @@ async function renderOwned() {
   if (last > 0) parts.push(t("ownedStatusAt", new Date(last).toLocaleString(ui.locale, { dateStyle: "short", timeStyle: "short" })));
   document.getElementById("ownedSummary").textContent = parts.join(" · ");
 
+  ownedHistories = await loadOwnedHistories(rows);
   renderOwnedSpending(orders, rows);
   ownedMonthsYear = null; // nová data nebo jazyk – graf měsíců postavit znovu
   renderOwnedTable();
+  renderOwnedApplus(rows).catch((error) => console.error("Odhad AlzaPlus+ se nepodařilo spočítat:", error));
+  renderOwnedRestock(rows).catch((error) => console.error("Dochází vám? se nepodařilo spočítat:", error));
+}
+
+// Dochází vám? Opakovaně kupované zboží, které podle rytmu nákupů brzy dojde (AlzaCore.getRestockList) – s cenou z poslední
+// kontroly a hodnocením proti obvyklé ceně / rytmu akcí, je-li historie
+async function renderOwnedRestock(rows) {
+  const block = document.getElementById("ownedRestock");
+  const owned = Object.fromEntries(rows.map((row) => [row.key, row.product]));
+  const now = Date.now();
+  const due = AlzaCore.getRestockList(owned, now);
+  block.hidden = due.length === 0;
+  if (block.hidden) return;
+  document.getElementById("ownedRestockTitle").textContent = t("ownedRestockTitle", due.length);
+  document.getElementById("ownedRestockList").replaceChildren(
+    ...due.map((rhythm) => {
+      const { key, product, interval, last, next, days, pieces } = rhythm;
+      const item = document.createElement("li");
+      item.appendChild(productLink(product.url, product.name || nameFromUrl(product.url)));
+      const when = days < 0 ? t("ownedRestockOverdue", formatDate(next)) : days === 0 ? t("ownedRestockToday") : t("ownedRestockNext", formatDate(next), AlzaCore.formatDays(ui.lang, days));
+      // Poslední nákup jinak velký než obvykle (12 ks místo 1) – odhad s ním počítá, proto i počet kusů
+      const rhythmKey = AlzaCore.isRestockUnusual(rhythm) ? "ownedRestockRhythmPieces" : "ownedRestockRhythm";
+      const info = Object.assign(document.createElement("span"), { className: "restock-info", textContent: t(rhythmKey, AlzaCore.formatDays(ui.lang, interval), formatDate(last), pieces) });
+      const whenSpan = Object.assign(document.createElement("span"), { className: days <= 7 ? "restock-due" : "", textContent: when });
+      item.append(whenSpan, info);
+      // Cena k zaplacení (bez cashbacku a výkupu) z posledního záznamu historie. „Teď“ a hodnocení jen u záznamu
+      // potvrzeného v posledních dnech; starší cena se ukáže s datem a bez hodnocení
+      const entries = ownedHistories[key];
+      const latest = Array.isArray(entries) ? entries.at(-1) : null;
+      const current = latest ? AlzaCore.getPlausiblePayNowPrice(latest.p) : null;
+      if (current > 0) {
+        const seenAt = Math.max(Number(latest.s) || 0, Number(latest.t) || 0);
+        const fresh = seenAt >= now - AlzaCore.restockPriceMaxAgeDays * AlzaCore.dayMs;
+        const amount = AlzaCore.formatPrice(current, product.domain);
+        const price = Object.assign(document.createElement("span"), { className: "restock-price", textContent: fresh ? t("ownedRestockPrice", amount) : t("ownedRestockPriceAt", amount, formatDate(seenAt)) });
+        if (fresh) {
+          const verdict = AlzaCore.getPriceVerdict(entries, current, now);
+          const cycle = AlzaCore.getSaleCycle(entries, current, now);
+          const status = cycle?.wait ? ["restock-wait", t("ownedRestockWait")] : ["good", "lowest"].includes(verdict?.level) ? ["restock-good", t("ownedRestockGood")] : verdict?.level === "high" ? ["restock-due", t("ownedRestockHigh")] : null;
+          if (status) price.append(" · ", Object.assign(document.createElement("span"), { className: status[0], textContent: status[1] }));
+        }
+        item.appendChild(price);
+      }
+      return item;
+    })
+  );
+}
+
+// Vyplatí se AlzaPlus+? Rozdíl běžné ceny a ceny s AlzaPlus+ u nákupů za poslední rok podle historie cen z doby nákupu
+// (AlzaCore.estimateAlzaPlus). Historie se načítají jen pro koupené produkty
+async function renderOwnedApplus(rows) {
+  const element = document.getElementById("ownedApplus");
+  const keys = [...new Set(rows.map((row) => row.key))];
+  if (keys.length === 0) {
+    element.hidden = true;
+    return;
+  }
+  const owned = Object.fromEntries(rows.map((row) => [row.key, row.product]));
+  const estimate = AlzaCore.estimateAlzaPlus(owned, ownedHistories);
+  element.hidden = estimate.buys === 0;
+  if (element.hidden) return;
+  const sum = (amounts) =>
+    Object.entries(amounts)
+      .map(([domain, amount]) => AlzaCore.formatPrice(amount, domain))
+      .join(" + ");
+  const saving = sum(estimate.saving);
+  // U člena: co ušetřil nákupy za cenu AlzaPlus+ a oč zaplatil víc u ostatních (než členem byl, nebo bez přihlášení)
+  const missed = sum(estimate.missed);
+  const key =
+    estimate.known === 0
+      ? "ownedApplusNoData"
+      : estimate.cheaper === 0
+        ? "ownedApplusNone"
+        : estimate.member === true
+          ? missed
+            ? "ownedApplusMemberMissed"
+            : "ownedApplusMember"
+          : estimate.member === false
+            ? "ownedApplusNonMember"
+            : "ownedApplusUnknown";
+  element.replaceChildren(iconText("bag", t(key, saving, estimate.cheaper, estimate.known, estimate.buys, missed)));
+  element.title = t("ownedApplusTip");
 }
 
 // Graf výdajů jde sbalit; volba se pamatuje jen v tomto prohlížeči (localStorage může být nedostupné – pak zůstane rozbalený)
@@ -595,7 +781,8 @@ document.getElementById("ownedEnable").addEventListener("click", () => {
 
 document.getElementById("ownedDelete").addEventListener("click", async () => {
   if (!confirm(t("ownedDeleteConfirm"))) return;
-  await AlzaStore.run({ type: "remove", keys: [OWNED_KEY, OWNED_ORDERS_KEY, OWNED_SYNC_KEY] });
+  // I nákupy jiných účtů Alzy odložené stranou (ownedAccounts) – „smazat načtené nákupy“ znamená všechny
+  await AlzaStore.run({ type: "remove", keys: [OWNED_KEY, OWNED_ORDERS_KEY, OWNED_SYNC_KEY, AlzaCore.storageKeys.ownedAccounts] });
 });
 
 const renderOwnedFirstPage = () => {

@@ -16,6 +16,9 @@ const baseOf = (domainKey) => `${ORIGINS[domainKey]}/api/users/${USER}/v1/orders
 function setup(storage = {}) {
   const { AlzaCore, chrome, context } = loadCore({ storage: { alzaSettings: { ownedItems: true }, ...storage }, files: ["src/shared/store.js", "src/shared/orders.js"] });
   context.AlzaStore.isWriter = true;
+  // WebCrypto pro otisk účtu (v prohlížeči je globální)
+  context.crypto = require("crypto").webcrypto;
+  context.TextEncoder = TextEncoder;
   // const na nejvyšší úrovni skriptu není vlastnost globálního objektu – čte se jménem
   const AlzaOrders = vm.runInContext("AlzaOrders", context);
   const AlzaOwned = vm.runInContext("AlzaOwned", context);
@@ -217,12 +220,12 @@ test("AlzaOrders.mark: otisk se mění s novou, zrušenou i doručenou objednáv
 });
 
 // Uložené nákupy: 111 je v objednávkách, 222 už ne (zrušeno / vráceno), 333 má prošlou lhůtu, 444 je z jiné Alzy
-const storedPurchases = () => {
+const storedPurchases = (boughtAt111 = null) => {
   const now = Date.now();
   const purchase = (domain, extra = {}) => ({ url: `${ORIGINS[domain]}/x.htm`, domain, name: "Starý název", price: 500, count: 1, boughtAt: now - 2 * DAY, returnUntil: now + 12 * DAY, ...extra });
   return {
     alzaPurchases: {
-      alza_cz_111: purchase("alza_cz", { notifiedPrice: 390 }),
+      alza_cz_111: purchase("alza_cz", { notifiedPrice: 390, ...(boughtAt111 && { boughtAt: boughtAt111 }) }),
       alza_cz_222: purchase("alza_cz"),
       alza_cz_333: purchase("alza_cz", { boughtAt: now - 20 * DAY, returnUntil: now - 6 * DAY }),
       alza_sk_444: purchase("alza_sk"),
@@ -232,13 +235,25 @@ const storedPurchases = () => {
 };
 
 test("AlzaOrders.sync: po úplném načtení zmizí nákupy, které v objednávkách už nejsou, i jejich připomínka cashbacku", async () => {
-  const { AlzaOrders, data } = setup(storedPurchases());
-  const api = shop("alza_cz", { archive: [order("alza_cz", 1001, 2)], details: { 1001: detail(2, [item(111, "428 Kč/ks")]) } });
+  // Týž nákup načtený znovu (stejný čas objednávky) – upozornění k němu zůstane
+  const created = iso(2);
+  const { AlzaOrders, data } = setup(storedPurchases(Date.parse(created)));
+  const sameDetail = { created, parts: [{ created, items: [item(111, "428 Kč/ks")] }] };
+  const api = shop("alza_cz", { archive: [order("alza_cz", 1001, 2)], details: { 1001: sameDetail } });
   assert.deepEqual(plain(await AlzaOrders.check(api.args())), { status: "synced", added: [] }); // 111 už bylo známé
   assert.deepEqual(Object.keys(data.alzaPurchases).sort(), ["alza_cz_111", "alza_sk_444"]);
   assert.equal(data.alzaPurchases.alza_cz_111.price, 428);
   assert.equal(data.alzaPurchases.alza_cz_111.notifiedPrice, 390); // o jaké ceně už přišlo upozornění
   assert.deepEqual(Object.keys(data.alzaCashbackReminders), ["alza_sk_444"]);
+});
+
+test("AlzaOrders.sync: nový nákup téhož produktu nepřebírá upozornění k dřívějšímu nákupu", async () => {
+  // Uložený nákup 111 (500, upozornění při 390) je jiný nákup než objednávka 1002 (1200, včera)
+  const { AlzaOrders, data } = setup(storedPurchases());
+  const api = shop("alza_cz", { archive: [order("alza_cz", 1002, 1)], details: { 1002: detail(1, [item(111, "1 200 Kč/ks")]) } });
+  await AlzaOrders.check(api.args());
+  assert.equal(data.alzaPurchases.alza_cz_111.price, 1200);
+  assert.equal(data.alzaPurchases.alza_cz_111.notifiedPrice, undefined);
 });
 
 test("AlzaOrders.sync: detail bez parts (změna API) není úplné načtení – nic ve lhůtě se nesmaže", async () => {
@@ -366,7 +381,11 @@ test("AlzaOrders.sync: ceny v € a Ft (alza.sk, alza.hu)", async () => {
     }
   );
   // Každá doména má svůj čas kontroly a otisk
-  assert.deepEqual(Object.keys(data.alzaPurchasesSync).sort(), ["alza_hu", "alza_hu:mark", "alza_hu:probe", "alza_sk", "alza_sk:mark", "alza_sk:probe"]);
+  assert.deepEqual(Object.keys(data.alzaPurchasesSync).sort(), [
+    "alza_hu", "alza_hu:account", "alza_hu:accountAt", "alza_hu:accountBy", "alza_hu:mark", "alza_hu:probe",
+    "alza_sk", "alza_sk:account", "alza_sk:accountAt", "alza_sk:accountBy", "alza_sk:mark", "alza_sk:probe",
+    "salt",
+  ]);
 });
 
 // === Moje nákupy ===
@@ -440,13 +459,16 @@ test("AlzaOwned.sync: první načtení po stránkách, pokračuje od uloženého
   let result = await AlzaOwned.sync(api.args());
   assert.deepEqual(plain(result), { status: "synced", added: 4, details: 0, pending: 4, done: false, total: 7 });
   assert.deepEqual(api.offsets, [0, 2]);
-  assert.deepEqual(plain({ ...data.alzaOwnedSync.alza_cz, at: 0 }), { offset: 4, done: false, total: 7, at: 0 });
+  // account = otisk účtu, kterému nákupy patří (audit 2026-11-16) – číslo účtu to není
+  const { account, ...state } = plain(data.alzaOwnedSync.alza_cz);
+  assert.match(account, /^[0-9a-f]{4}$/);
+  assert.deepEqual({ ...state, at: 0 }, { offset: 4, done: false, total: 7, at: 0 });
   // 2. běh naváže na offsetu 4 a archiv dokončí (poslední stránka je neúplná)
   api.offsets.length = 0;
   result = await AlzaOwned.sync(api.args());
   assert.deepEqual(plain(result), { status: "synced", added: 3, details: 0, pending: 7, done: true, total: 7 });
   assert.deepEqual(api.offsets, [4, 6]);
-  assert.deepEqual(plain({ ...data.alzaOwnedSync.alza_cz, at: 0 }), { offset: 0, done: true, total: 7, at: 0 });
+  assert.deepEqual(plain({ ...data.alzaOwnedSync.alza_cz, at: 0 }), { offset: 0, done: true, total: 7, at: 0, account });
   assert.equal(Object.keys(data.alzaOwned).length, 7);
   assert.deepEqual(Object.keys(data.alzaOwnedOrders.alza_cz).sort(), ["1", "2", "3", "4", "5", "6", "7"]);
   assert.equal(api.userIdCalls, 2); // jednou za běh
@@ -481,7 +503,7 @@ test("AlzaOwned.sync: přerušené první načtení (chyba stránky) naváže ta
   const api = archiveShop("alza_cz", [5, 4, 3, 2, 1].map((id, index) => ownedOrder("alza_cz", id, index + 1)));
   api.onArchive = (offset) => (offset === 2 ? new Error("HTTP 502") : null);
   await assert.rejects(() => AlzaOwned.sync(api.args()), /HTTP 502/);
-  assert.deepEqual(plain({ ...data.alzaOwnedSync.alza_cz, at: 0 }), { offset: 2, done: false, total: 5, at: 0 });
+  assert.deepEqual(plain({ ...data.alzaOwnedSync.alza_cz, at: 0, account: "" }), { offset: 2, done: false, total: 5, at: 0, account: "" });
   assert.equal(Object.keys(data.alzaOwned).length, 2);
   api.onArchive = null;
   api.offsets.length = 0;
@@ -642,7 +664,8 @@ test("AlzaOwned.sync: vypnutí volby během detailů – rozpracovaná dávka se
   const result = await AlzaOwned.sync(api.args());
   assert.deepEqual(plain(result), { status: "off", added: 0, details: 0, pending: 0, done: true, total: 3 });
   assert.deepEqual(api.detailCalls, ["3"]);
-  assert.equal(written.length, 0);
+  // Jediný zápis: sůl otisku účtu při prvním načtení (alzaPurchasesSync) – do Mých nákupů se nezapsalo nic
+  assert.deepEqual(written, ["alzaPurchasesSync"]);
   assert.deepEqual(detailTimes(data, "alza_cz", [3, 2, 1]), [false, false, false]);
   // Vypnuto už před načítáním: ani jeden dotaz na objednávky
   const off = setup({ ...ownedStorage("alza_cz", [3, 2, 1]), alzaSettings: { ownedItems: false } });
@@ -678,4 +701,59 @@ test("AlzaOwned.sync: smazání načtených nákupů během načítání běh uk
   // Další běh začne od začátku
   const again = await second.AlzaOwned.sync(archiveShop("alza_cz", [ownedOrder("alza_cz", 3, 1)]).args());
   assert.deepEqual([again.status, again.added, again.done], ["synced", 1, true]);
+});
+
+test("AlzaOrders.check: nenačtený detail objednávky – úplné načtení se zopakuje za failedSyncRetryMinutes, ne za 6 h", async () => {
+  const { AlzaCore, AlzaOrders, data } = setup({});
+  const api = shop("alza_cz", { archive: [order("alza_cz", 1001, 2)], details: {} });
+  const before = Date.now();
+  assert.equal((await AlzaOrders.check(api.args())).status, "synced");
+  const fullMs = AlzaCore.purchaseSyncHours * 60 * 60 * 1000;
+  const due = data.alzaPurchasesSync.alza_cz + fullMs - before;
+  assert.ok(due <= AlzaOrders.failedSyncRetryMinutes * 60 * 1000 + 1000, `další úplné načtení za ${due} ms`);
+});
+
+test("AlzaOrders.check: jiný účet ve stejném profilu – nákupy předchozího účtu pryč, číslo účtu se neukládá", async () => {
+  const { AlzaOrders, data } = setup(storedPurchases());
+  const api = shop("alza_cz", { archive: [order("alza_cz", 1001, 2)], details: { 1001: detail(2, [item(111, "428 Kč/ks")]) } });
+  await AlzaOrders.check(api.args());
+  const tag = data.alzaPurchasesSync["alza_cz:account"];
+  assert.match(tag, /^[0-9a-f]{4}$/);
+  assert.ok(!JSON.stringify(data.alzaPurchasesSync).includes(String(USER)), "číslo účtu v úložišti");
+  // Minule byl přihlášený jiný účet (jiný otisk), teď prázdné objednávky – nákup 111 předchozího účtu zmizí
+  data.alzaPurchasesSync["alza_cz:probe"] = 0;
+  data.alzaPurchasesSync["alza_cz:account"] = "zzzz";
+  // Neúplné načtení (detail chybí) by samo nic nesmazalo – maže kontrola účtu
+  api.archive = [order("alza_cz", 1002, 1)];
+  api.details = {};
+  // Účet přepíná kontrola na pozadí (background) – stránka Alzy s jiným účtem nic nemaže (audit 2026-11-16)
+  await AlzaOrders.check(api.args({ background: true }));
+  assert.equal(data.alzaPurchasesSync["alza_cz:account"], tag);
+  assert.equal(Object.keys(data.alzaPurchases).filter((key) => key.startsWith("alza_cz_")).length, 0);
+  assert.ok(data.alzaPurchases.alza_sk_444, "jiná Alza zůstává");
+});
+
+test("AlzaOrders.sync: každý nákup téhož zboží zvlášť v buys, novější nákup = nová totožnost pro upozornění", async () => {
+  const { AlzaOrders, data } = setup();
+  const api = shop("alza_cz", {
+    archive: [order("alza_cz", 1001, 6), order("alza_cz", 1002, 1)],
+    details: { 1001: detail(6, [item(111, "400 Kč/ks")]), 1002: detail(1, [item(111, "1 000 Kč/ks")]) },
+  });
+  await AlzaOrders.check(api.args());
+  const bought = data.alzaPurchases.alza_cz_111;
+  assert.deepEqual(bought.buys.map((buy) => buy.price), [400, 1000]);
+  assert.equal(bought.lastBoughtAt, bought.buys[1].boughtAt);
+  // Upozornění k tomuto záznamu (stejný nejnovější nákup) zůstane, po dalším nákupu se zahodí
+  data.alzaPurchases.alza_cz_111.notifiedPrice = 450;
+  data.alzaPurchasesSync["alza_cz:probe"] = 0;
+  data.alzaPurchasesSync.alza_cz = 0;
+  await AlzaOrders.check(api.args());
+  assert.equal(data.alzaPurchases.alza_cz_111.notifiedPrice, 450);
+  api.archive = [...api.archive, order("alza_cz", 1003, 0)];
+  api.details = { ...api.details, 1003: detail(0, [item(111, "990 Kč/ks")]) };
+  data.alzaPurchasesSync["alza_cz:probe"] = 0;
+  data.alzaPurchasesSync.alza_cz = 0;
+  await AlzaOrders.check(api.args());
+  assert.equal(data.alzaPurchases.alza_cz_111.buys.length, 3);
+  assert.equal(data.alzaPurchases.alza_cz_111.notifiedPrice, undefined);
 });

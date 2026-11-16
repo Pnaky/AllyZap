@@ -8,6 +8,8 @@ const DAY = AlzaCore.dayMs;
 const NOW = Date.UTC(2026, 10, 6, 12);
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const endOfDay = (year, month, day) => new Date(year, month - 1, day, 23, 59, 59).getTime();
+// Zkratka AlzaCore.parseCashbackTerms jen pro testy byla z jádra odstraněna (audit 2026-11-16)
+const parseCashbackTerms = (text, title = null, boughtAt = Date.now(), lang = null) => AlzaCore.getCashbackDates(AlzaCore.readCashbackTerms(text, title, boughtAt, lang), boughtAt);
 
 function setupStore(storage = {}) {
   const { AlzaCore: core, chrome, context } = loadCore({ storage, files: ["src/shared/store.js"] });
@@ -134,7 +136,7 @@ test("readCashbackTerms: maďarská stránka – období nákupu měsíc.den, �
     assert.deepEqual(terms.purchaseEnds, [endOfDay(2026, 12, 5)], String(lang));
     assert.deepEqual(terms.registerEnds, [{ until: endOfDay(2027, 1, 15), from: null }], String(lang));
   }
-  assert.equal(AlzaCore.parseCashbackTerms("A regisztráció határideje: 2027. 02. 28.", null, NOW, "hu").registerUntil, endOfDay(2027, 2, 28));
+  assert.equal(parseCashbackTerms("A regisztráció határideje: 2027. 02. 28.", null, NOW, "hu").registerUntil, endOfDay(2027, 2, 28));
   assert.equal(AlzaCore.getTermsLanguage("Registrace nejpozději do 31. 1. 2027"), null);
 });
 

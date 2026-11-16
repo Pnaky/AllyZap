@@ -19,18 +19,20 @@ const CLEANUP_KEY = AlzaCore.storageKeys.cleanup;
 const ALARM_NAME = "alzaWatchRun";
 const RETRY_ALARM_NAME = "alzaWatchRetry"; // Kontrola, která narazila na offline – zkusit znovu, hlavní plán se nemění
 const QUIET_END_ALARM_NAME = "alzaQuietEnd"; // Konec tichých hodin – odeslat odložené notifikace
+const NOTIFY_RETRY_ALARM_NAME = "alzaNotifyRetry"; // Notifikace, které prohlížeč nepřijal – další pokus o doručení
 
 const config = {
   missedRunDelayMs: 5 * 60 * 1000, // Zmeškaná denní kontrola (prohlížeč byl ve zvolený čas zavřený) proběhne po 5 min
   minCheckAgeMs: 30 * 60 * 1000, // Produkt zkontrolovaný (i stránkou seznamu) před méně než 30 min se přeskočí
   delayBetweenProductsMs: 4000, // Rozestup mezi produkty, ať Alza nedostane dávku požadavků najednou
   fetchRetryDelayMs: 5000,
-  maxBlockedStreak: 3, // Tolik produktů po sobě s 403 / 429 / 5xx běh ukončí (Alza blokuje nebo má výpadek)
+  maxBlockedStreak: 3, // Tolik produktů po sobě s 403 / 429 / 5xx, timeoutem nebo chybou sítě běh ukončí (Alza blokuje nebo má výpadek)
   stayAwakeIntervalMs: 10000, // Viz stayAwake
   userIdCacheMs: 3 * 60 * 1000, // Číslo účtu v paměti po dobu jednoho běhu / kol tlačítka „Načíst“ (nepřihlášen: minutu)
   delayBetweenListsMs: 1000, // Obsah hlídaných seznamů na začátku běhu (syncWatchedLists)
   listFetchTimeoutMs: 15000,
   logMaxListNames: 10, // Přidané / odebrané položky seznamu v logu běhu
+  loginRetryMs: 10 * 60 * 1000, // Kontrola po přihlášení (retryAfterLogin) nejvýš jednou za 10 min
   problemNotifyIntervalMs: 6 * 60 * 60 * 1000, // Problém se znovu ohlásí nejdřív po 6 h (v popupu je vidět vždy)
   maxIndividualNotifications: 3, // Do tohoto počtu změn vlastní notifikace pro každý produkt, nad ním souhrn
   maxNameLength: 32, // Názvy z Alzy bývají dlouhé – v souhrnu se zkracují
@@ -38,6 +40,8 @@ const config = {
   recentChangesMax: 20, // Přehled změn v popupu
   logMaxRuns: 50,
   maxPendingNotifications: 50,
+  notifyMaxAttempts: 3, // Nedoručená notifikace se zkusí znovu (alarm alzaNotifyRetry), po tolika pokusech se zahodí
+  notifyRetryMs: 5 * 60 * 1000, // Další pokus o doručení za tuto dobu
   cleanupRecountMs: 60 * 60 * 1000,
   offlineRetryMs: 15 * 60 * 1000,
   notificationImageTimeoutMs: 5000,
@@ -64,7 +68,7 @@ const storeReady = AlzaStore.exclusive(() => AlzaStore.migrate())
 const staleRunReset = (async () => {
   await storeReady;
   const seed = (await getState()).recent ? null : await seedRecentFromLog();
-  let recovered = false;
+  let recovered = null; // Deník přerušeného běhu
   await withStateLock(async () => {
     const state = await getState();
     if (!state.running && !seed) return;
@@ -74,11 +78,14 @@ const staleRunReset = (async () => {
     const next = { ...rest, running: false, ...(seed && { recent: seed }) };
     if (state.running && Array.isArray(journal) && journal.length > 0) {
       Object.assign(next, await recoverJournal(next, journal));
-      recovered = true;
+      recovered = journal;
     }
     await saveState(next);
   });
-  if (recovered) await flushPendingNotifications({ afterReset: false }).catch((error) => console.error("Změny z přerušeného běhu se nepodařilo ohlásit:", error));
+  // Stav cílových cen a upozornění k nákupům z deníku (mimo zámek stavu – zapisují přes frontu samy): přerušený běh
+  // je už neuložil a další kontrola by stejnou cílovou cenu / zlevnění po nákupu ohlásila podruhé
+  if (recovered) await saveJournalStates(recovered).catch((error) => console.error("Stav cílových cen z přerušeného běhu se nepodařilo uložit:", error));
+  await resumeDeferred(Boolean(recovered)).catch((error) => console.error("Odložené notifikace se po startu nepodařilo ohlásit:", error));
   // Číslo na ikoně se po restartu prohlížeče ztratí. Návrh čistky čte celé storage – při častém probouzení
   // workeru (alarm, zprávy ze záložek) ho přepočítat nejvýš jednou za cleanupRecountMs, jinak jen ikona
   const { [CLEANUP_KEY]: cleanup } = await chrome.storage.local.get(CLEANUP_KEY);
@@ -166,6 +173,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     flushPendingNotifications().catch((error) => console.error("Odložené notifikace se nepodařilo odeslat:", error));
     return;
   }
+  // Další pokus o doručení notifikací, které prohlížeč nepřijal (requeueNotifications) – připomínek se netýká
+  if (alarm.name === NOTIFY_RETRY_ALARM_NAME) {
+    flushPendingNotifications({ reminders: false }).catch((error) => console.error("Nedoručené notifikace se nepodařilo odeslat:", error));
+    return;
+  }
   if (alarm.name === RETRY_ALARM_NAME) {
     runWatch({ force: false, trigger: "alarm" });
     return;
@@ -176,8 +188,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Zápis do storage z content scriptu, popupu nebo nastavení (AlzaStore.run)
-  if (AlzaStore.handleMessage(message, sendResponse)) return true;
+  // Zápis do storage z content scriptu, popupu nebo nastavení (AlzaStore.run) – content script (stránka Alzy) smí
+  // jen vyjmenované operace (AlzaStore.contentOps), proto i odesílatel
+  if (AlzaStore.handleMessage(message, sendResponse, sender)) return true;
   // Stránka produktu pro otevřený seznam (content.js) – stažení a rozbor mimo hlavní vlákno stránky
   if (message?.action === "fetchProductPage") {
     withProductPages(() => ProductPages.fetch(message.url))
@@ -189,9 +202,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     getCashbackTerms(message.url, message.title).then(sendResponse, () => sendResponse(null));
     return true;
   }
-  if (message?.action === "watchTestNotifications") {
-    sendTestNotifications().catch((error) => console.error("Zkušební notifikace se nepodařilo odeslat:", error));
+  // Moje nákupy: odkaz na fakturu k nákupu (PDF) – detail objednávky se načte až teď, odkaz se neukládá
+  if (message?.action === "ownedInvoice") {
+    getOwnedInvoice(message).then(sendResponse, async (error) => {
+      const settings = await AlzaCore.getSettings().catch(() => ({}));
+      const lang = AlzaCore.getDisplayLanguage(settings, AlzaCore.domains[message.domain]?.lang || "cz");
+      sendResponse({ error: AlzaCore.localizeError(lang, error?.message || error) });
+    });
+    return true;
+  }
+  // Odkaz z vloženého prvku na Alze do nastavení (content script stránku nastavení sám otevřít neumí): jen známá kotva
+  if (message?.action === "openOptions") {
+    const hash = /^#[a-z-]{1,30}$/.test(String(message.hash || "")) ? message.hash : "";
+    chrome.tabs.create({ url: chrome.runtime.getURL(`src/options/options.html${hash}`) });
     return;
+  }
+  // Odpověď = kolik notifikací prohlížeč přijal a kolik odmítl – stránka podle toho ukáže výsledek a radu
+  if (message?.action === "watchTestNotifications") {
+    sendTestNotifications().then(sendResponse, (error) => {
+      console.error("Zkušební notifikace se nepodařilo odeslat:", error);
+      sendResponse({ sent: 0, failed: 1, error: String(error?.message || error), level: null });
+    });
+    return true;
   }
   // Nastavení po smazání dat / popup po odložení návrhu čistky
   if (message?.action === "cleanupRefresh") {
@@ -209,6 +241,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then((result) => processWarrantyReminders().catch(() => {}).then(() => result))
       .then(sendResponse, (error) => sendResponse({ status: "error", error: String(error?.message || error), domains: {} }));
     return true;
+  }
+  // Stránka Alzy ukazuje přihlášeného uživatele a poslední kontrola skončila odhlášením (login-check.js)
+  if (message?.action === "watchLoginSeen") {
+    retryAfterLogin(message.domain, sender).catch((error) => console.error("Kontrolu po přihlášení se nepodařilo spustit:", error));
+    return;
   }
   if (message?.action !== "watchRunNow") return;
   runWatch({ force: true, trigger: "manual" });
@@ -359,6 +396,16 @@ async function getUserId(origin) {
   return id;
 }
 
+// Faktura k nákupu: { url } (null = objednávka doklad nemá) nebo výjimka (nepřihlášen, chyba Alzy)
+async function getOwnedInvoice({ domain, order, product }) {
+  if (!AlzaCore.isKnownDomain(domain) || !/^\d{1,20}$/.test(String(order))) throw new Error("neplatná objednávka");
+  const { origin } = AlzaCore.domains[domain];
+  const userId = await getUserId(origin);
+  if (!userId) throw new Error("nepřihlášen");
+  const detail = await fetchAlzaJson(`${origin}/api/users/${userId}/v1/orders/${encodeURIComponent(order)}/`);
+  return { url: AlzaCore.pickOrderInvoice(detail, domain, product) };
+}
+
 async function syncOrders(log, force) {
   const settings = await AlzaCore.getSettings();
   if (!settings.watchPurchases) return;
@@ -369,7 +416,8 @@ async function syncOrders(log, force) {
     const name = AlzaCore.translate(AlzaCore.getDisplayLanguage(settings, lang), "purchaseOrdersLink");
     const url = `${origin}${AlzaCore.ordersPath}`;
     try {
-      const result = await AlzaOrders.check({ domainKey, origin, getJson: fetchAlzaJson, getUserId: () => getUserId(origin), always: force });
+      // background: účet, který vidí kontrola na pozadí, je pro hlídání po nákupu rozhodující (AlzaOrders.checkAccount)
+      const result = await AlzaOrders.check({ domainKey, origin, getJson: fetchAlzaJson, getUserId: () => getUserId(origin), always: force, background: true });
       if (result.added.length) {
         log.lists.push({ name, url, orders: true, added: result.added.slice(0, config.logMaxListNames), addedCount: result.added.length, removed: [], removedCount: 0 });
       }
@@ -476,8 +524,43 @@ async function sendWarrantyReminders() {
     const lang = AlzaCore.getDisplayLanguage(settings, AlzaCore.domains[product.domain].lang);
     const message = AlzaCore.translate(lang, "notifyWarrantyEnding", AlzaCore.formatTextDate(until, lang, true), AlzaCore.formatTextDate(buy.t, lang, true));
     const iconUrl = await loadProductIcon(product.image);
-    await createNotification({ title: product.name || "Alza", message, requireInteraction: true, ...(iconUrl && { iconUrl }) }, AlzaCore.getOrderUrl(product.domain, buy.o) || product.url);
+    // Bez názvu produktu název rozšíření – „Alza“ by vypadala jako notifikace od Alzy
+    await createNotification({ title: product.name || "AllyZap", message, requireInteraction: true, ...(iconUrl && { iconUrl }) }, AlzaCore.getOrderUrl(product.domain, buy.o) || product.url);
     await AlzaStore.run({ type: "markOwnedNotified", items: [{ key: productKey, order: buy.o }] });
+  }
+}
+
+// Připomínka poukazu z peněženky (volba remindVouchers): týden před koncem platnosti a poslední den. Kliknutí otevře
+// košík – tam ho nabídne content/basket-vouchers.js k vložení. Tiché hodiny jako u záruky; po sobě kvůli souběhu
+let voucherRemindersQueue = Promise.resolve();
+function processVoucherReminders() {
+  voucherRemindersQueue = voucherRemindersQueue
+    .then(() => sendVoucherReminders())
+    .catch((error) => console.error("Připomínky poukazů se nepodařilo odeslat:", error));
+  return voucherRemindersQueue;
+}
+
+async function sendVoucherReminders() {
+  const settings = await AlzaCore.getSettings();
+  if (!settings.remindVouchers) return;
+  const key = AlzaCore.storageKeys.vouchers;
+  const { [key]: vouchers } = await chrome.storage.local.get(key);
+  const reminders = AlzaCore.getVoucherReminders(vouchers).slice(0, config.maxIndividualNotifications);
+  if (reminders.length === 0) return;
+  if (AlzaCore.isQuietTime(settings)) {
+    await scheduleQuietEnd(settings);
+    return;
+  }
+  for (const { id, voucher, step, daysLeft } of reminders) {
+    const { lang, origin } = AlzaCore.domains[voucher.domain];
+    const textLang = AlzaCore.getDisplayLanguage(settings, lang);
+    const until = AlzaCore.formatTextDate(voucher.until, textLang, true);
+    const message = step === "last" ? AlzaCore.translate(textLang, "notifyVoucherLast", until) : AlzaCore.translate(textLang, "notifyVoucherSoon", until, AlzaCore.formatDays(textLang, daysLeft));
+    // Bez celého kódu (notifikace je vidět i na zamčené obrazovce): hodnota a poznámka, bez poznámky konec kódu
+    const title = AlzaCore.translate(textLang, "notifyVoucherTitle", AlzaCore.formatVoucherValue(voucher), AlzaCore.getVoucherLabel(voucher));
+    await createNotification({ title, message, requireInteraction: step === "last" }, `${origin}/Order1.htm`);
+    // Poslední den vyřídí i první připomínku – ta už nepřijde
+    await AlzaStore.run({ type: "patchMap", key, merge: { [id]: step === "last" ? { notifiedLast: true, notifiedSoon: true } : { notifiedSoon: true } }, existingOnly: true });
   }
 }
 
@@ -504,6 +587,44 @@ function runWatch(options) {
   return stayAwake(() => runWatchBody(options));
 }
 
+// Kontrola hned po přihlášení (login-check.js): jen když poslední běh skončil odhlášením na téže doméně a nic
+// neběží. Anonymní okno a kontejner Firefoxu mají vlastní cookies – přihlášení v nich kontrola na pozadí nevidí.
+// Nejvýš jednou za loginRetryMs na doménu: kdyby stránka přihlášení ukazovala, ale kontrola ho neviděla, nespouštět
+// ji s každou otevřenou stránkou. Odhlášených domén může být víc (listAlerts) – každá má svůj čas (loginRetryAt =
+// { "<doména>": čas }; číslo ze starší verze platí pro všechny)
+async function retryAfterLogin(domain, sender) {
+  const tab = sender?.tab;
+  if (!tab || tab.incognito || (tab.cookieStoreId && tab.cookieStoreId !== "firefox-default")) return;
+  if (!AlzaCore.isKnownDomain(domain)) return;
+  await staleRunReset;
+  const start = await withStateLock(async () => {
+    const state = await getState();
+    const loggedOut = listAlerts(state.alert).some((alert) => alert?.reason === "notifyProblemNotLogged" && alert.domain === domain);
+    if (running || state.running || !loggedOut) return false;
+    const retries = state.loginRetryAt && typeof state.loginRetryAt === "object" ? state.loginRetryAt : {};
+    const retriedAt = typeof state.loginRetryAt === "number" ? state.loginRetryAt : Number(retries[domain]) || 0;
+    if (Date.now() - retriedAt < config.loginRetryMs) return false;
+    await saveState({ ...state, loginRetryAt: { ...retries, [domain]: Date.now() } });
+    return true;
+  });
+  if (start) runWatch({ force: false, trigger: "login" });
+}
+
+// Upozornění na přerušenou kontrolu ve stavu: první + další (alert.others – druhá odhlášená doména, Alza blokuje…)
+function listAlerts(alert) {
+  return alert ? [alert, ...(Array.isArray(alert.others) ? alert.others : [])] : [];
+}
+
+// Upozornění z právě doběhlého běhu do stavu: since = od kdy se kvůli tomu ceny nekontrolují – stejný důvod (u
+// odhlášení a cen bez DPH na stejné doméně) za sebou čas drží. null = běh prošel
+function stampAlerts(alerts, previous, now) {
+  const before = listAlerts(previous);
+  const same = (a, b) => a?.reason === b.reason && (b.reason === "blocked" || a.domain === b.domain);
+  const [first, ...others] = alerts.map((alert) => ({ ...alert, since: before.find((item) => same(item, alert))?.since ?? now }));
+  if (!first) return null;
+  return others.length > 0 ? { ...first, others } : first;
+}
+
 async function runWatchBody({ force, trigger }) {
   // Kliknutí na Zkontrolovat během dokončování běhu se neztratí – proběhne hned po něm
   if (running) {
@@ -511,6 +632,9 @@ async function runWatchBody({ force, trigger }) {
     return;
   }
   running = true;
+  // Kontrola na vyžádání právě začíná – dřívější kliknutí (během dojezdu předchozího běhu: Moje nákupy, připomínky)
+  // je tím vyřízené, jinak by po tomto běhu proběhl ještě jeden
+  if (trigger === "manual") manualRunRequested = false;
 
   let state;
   try {
@@ -535,6 +659,11 @@ async function runWatchBody({ force, trigger }) {
   purchaseUpdates = {};
   let checked = 0;
   let blockedStreak = 0;
+  // Důvody přerušení – oranžový „!“ na ikoně a upozornění v popupu. Nepřihlášen / ceny bez DPH = nastavení účtu na
+  // jedné doméně: přeskočí se jen její zbylé produkty (stoppedDomains), ostatní domény se zkontrolují. Alza blokuje
+  // nebo neodpovídá = konec celého běhu
+  const alerts = [];
+  const stoppedDomains = new Set();
   let productPagesAcquired = false;
 
   try {
@@ -554,7 +683,9 @@ async function runWatchBody({ force, trigger }) {
     await acquireProductPages();
     productPagesAcquired = true;
 
-    for (const product of products) {
+    for (const [index, product] of products.entries()) {
+      // Doména, kde kontrola narazila na odhlášení / ceny bez DPH – její další produkty by dopadly stejně
+      if (stoppedDomains.has(product.domain)) continue;
       const outcome = await checkProduct(product, force, targets, targetUpdates).catch((error) => ({
         problem: AlzaCore.translate(product.textLang, "notifyProblemFetch", AlzaCore.localizeError(product.textLang, error?.message || error)),
       }));
@@ -562,7 +693,19 @@ async function runWatchBody({ force, trigger }) {
       // Nejaktuálnější název ze stránky / historie – v seznamu může být uložený starší (s jinou akcí)
       const name = outcome.name || product.name;
       if (outcome.changes?.length) {
-        changes.push({ ...product, name, image: outcome.image || product.image, price: outcome.price ?? null, changes: outcome.changes });
+        // Do deníku běhu i to, co se jinak ukládá až na konci běhu: stav cílové ceny (targetState) a nejnižší cena,
+        // o které jde upozornění po nákupu (purchase.notifiedPrice). Obnova přerušeného běhu je zapíše
+        // (saveJournalStates) – jinak by další kontrola stejnou cílovou cenu / zlevnění ohlásila podruhé
+        const key = AlzaCore.getProductKey(product.domain, product.url);
+        changes.push({
+          ...product,
+          name,
+          image: outcome.image || product.image,
+          price: outcome.price ?? null,
+          changes: outcome.changes,
+          ...(targetUpdates[key] && { targetState: targetUpdates[key] }),
+          ...(product.purchase && purchaseUpdates[key] && { purchase: { ...product.purchase, notifiedPrice: purchaseUpdates[key].notifiedPrice } }),
+        });
         await saveJournal(changes);
       }
       // Řádek logu u zboží hlídaného jen kvůli nákupu – diagnostika jeho název neposílá
@@ -577,23 +720,28 @@ async function runWatchBody({ force, trigger }) {
 
       checked++;
       // Zboží hlídané jen kvůli nákupu: problém je vidět v popupu a logu, notifikaci „kontrola selhala“ nespouští
-      // (uživatel ho sám nehlídá – po odhlášení by chodila celou lhůtu pro vrácení)
-      if (outcome.problem) problems.push({ ...product, lang: product.textLang, name, message: outcome.problem, silent: Boolean(product.purchaseOnly) });
+      // (uživatel ho sám nehlídá). Přerušení celého běhu (nepřihlášen…) se ohlásí vždy – jinak by se o něm nevědělo
+      if (outcome.problem) problems.push({ ...product, lang: product.textLang, name, message: outcome.problem, silent: Boolean(product.purchaseOnly) && !outcome.abort });
       log.items.push({ name, url: product.url, lines, problem: outcome.problem || null, ...purchaseFlag });
 
-      // Bez přihlášení by stejně selhaly všechny produkty – zbytečně nezatěžovat Alzu
       if (outcome.abort) {
+        // Bez přihlášení (s cenami bez DPH) by stejně selhaly všechny produkty téže domény – zbytečně nezatěžovat
+        // Alzu. Ostatní domény mají vlastní přihlášení a zkontrolují se dál
         log.aborted = true;
-        break;
-      }
-      // Alza blokuje (403 / 429) nebo padá (5xx) několikrát po sobě – zbytek produktů by dopadl stejně
-      blockedStreak = outcome.blocked ? blockedStreak + 1 : 0;
-      if (blockedStreak >= config.maxBlockedStreak) {
-        log.aborted = true;
-        break;
+        alerts.push({ reason: outcome.reason, message: outcome.problem, domain: product.domain });
+        stoppedDomains.add(product.domain);
+      } else {
+        // Alza blokuje (403 / 429), padá (5xx) nebo neodpovídá (timeout, chyba sítě) několikrát po sobě – zbytek
+        // produktů by dopadl stejně
+        blockedStreak = outcome.blocked ? blockedStreak + 1 : 0;
+        if (blockedStreak >= config.maxBlockedStreak) {
+          log.aborted = true;
+          alerts.push({ reason: "blocked", message: outcome.problem, domain: product.domain });
+          break;
+        }
       }
 
-      if (product !== products.at(-1)) await sleep(config.delayBetweenProductsMs);
+      if (products.slice(index + 1).some((next) => !stoppedDomains.has(next.domain))) await sleep(config.delayBetweenProductsMs);
     }
   } catch (error) {
     console.error("Chyba při kontrole hlídaných seznamů:", error);
@@ -605,7 +753,7 @@ async function runWatchBody({ force, trigger }) {
     // Zámek se uvolní vždy – jinak by popup ukazoval "Probíhá kontrola" a další běhy by se
     // nespustily až do restartu workeru
     try {
-      await finishRun({ state, log, checked, changes, problems, targetUpdates, force, productPagesAcquired });
+      await finishRun({ state, log, checked, changes, problems, targetUpdates, force, productPagesAcquired, alerts });
     } catch (error) {
       console.error("Chyba při dokončení kontroly:", error);
       await withStateLock(async () => saveState({ ...(await getState()), running: false, lastRunEnd: Date.now() })).catch(() => {});
@@ -618,6 +766,7 @@ async function runWatchBody({ force, trigger }) {
     // Moje nákupy: nové objednávky z archivu, pár detailů a připomínky konce záruky – také po běhu bez produktů
     if (navigator.onLine) await syncOwned(false).catch((error) => console.error("Koupené zboží se nepodařilo načíst:", error));
     await processWarrantyReminders().catch((error) => console.error("Připomínky konce záruky se nepodařilo odeslat:", error));
+    await processVoucherReminders();
     if (manualRunRequested) {
       manualRunRequested = false;
       runWatch({ force: true, trigger: "manual" });
@@ -625,7 +774,7 @@ async function runWatchBody({ force, trigger }) {
   }
 }
 
-async function finishRun({ state, log, checked, changes, problems, targetUpdates, force, productPagesAcquired }) {
+async function finishRun({ state, log, checked, changes, problems, targetUpdates, force, productPagesAcquired, alerts = [] }) {
   if (productPagesAcquired) await releaseProductPages();
   await saveTargetStates(targetUpdates);
   await savePurchaseStates(purchaseUpdates);
@@ -658,6 +807,10 @@ async function finishRun({ state, log, checked, changes, problems, targetUpdates
       checked: log.offline ? current.checked : checked,
       changes: log.offline ? current.changes : changes.map(({ name, url, changes }) => ({ name, url, lines: changes.map((change) => change.text) })),
       problems: log.offline ? current.problems : problems.map(({ name, url, message }) => ({ name, url, message })),
+      // Přerušený běh: trvá, dokud další běh neprojde. since = od kdy se kvůli tomu ceny (u odhlášení jen ceny té
+      // domény) nekontrolují – stampAlerts. Víc důvodů (dvě odhlášené domény) = první + alert.others.
+      // Offline se nic nezkontrolovalo – upozornění zůstane
+      alert: log.offline ? current.alert || null : stampAlerts(alerts, current.alert, end),
       pendingNotifications: quiet ? pending.slice(-config.maxPendingNotifications) : [],
       lastProblemNotifiedAt: notifyProblemsNow ? end : current.lastProblemNotifiedAt,
       recent,
@@ -679,13 +832,42 @@ async function finishRun({ state, log, checked, changes, problems, targetUpdates
 
   // Každý krok zvlášť – chyba přepočtu čistky nesmí zastavit notifikace ani naopak
   await updateCleanup().catch((error) => console.error("Návrh čistky se nepodařilo přepočítat:", error)); // Nastaví i číslo na ikoně
-  if (!quiet) await notifyChanges(pending).catch((error) => console.error("Chyba při odesílání notifikací:", error));
+  if (!quiet) {
+    await notifyChanges(pending)
+      .then(requeueNotifications)
+      .catch((error) => console.error("Chyba při odesílání notifikací:", error));
+  }
   if (notifyProblemsNow) await notifyProblems(loudProblems).catch((error) => console.error("Chyba při odesílání notifikace o problému:", error));
 }
 
-// Konec tichých hodin: alarm odešle odložené notifikace i připomínky cashbacku
+// Konec tichých hodin: alarm odešle odložené notifikace i připomínky (cashback, konec záruky, poukazy). Čas alarmu
+// jde i do stavu (quietEndAt): alarm restart prohlížeče přežít nemusí (Firefox je nedrží) a start služby podle něj
+// pozná, že na konec tichých hodin něco čeká (resumeDeferred). Nevolat uvnitř zámku stavu
 async function scheduleQuietEnd(settings, now = Date.now()) {
-  await chrome.alarms.create(QUIET_END_ALARM_NAME, { when: AlzaCore.getDailyRunTimes(settings.quietTo, now).next + 60 * 1000 });
+  const when = AlzaCore.getDailyRunTimes(settings.quietTo, now).next + 60 * 1000;
+  await chrome.alarms.create(QUIET_END_ALARM_NAME, { when });
+  await withStateLock(async () => {
+    const state = await getState();
+    if (state.quietEndAt !== when) await saveState({ ...state, quietEndAt: when });
+  });
+}
+
+// Po startu služby: odložené notifikace (z tichých hodin, nedoručené, z deníku přerušeného běhu) a připomínky, které
+// čekaly na alarm konce tichých hodin nebo dalšího pokusu o doručení. Bez alarmu (po restartu Firefoxu) by čekaly
+// až na další kontrolu – denní až zítra. V tichých hodinách se alarm jejich konce naplánuje znovu, mimo ně se
+// odešlou hned. Dokud alarm existuje (Chrome je drží, služba se jen probudila), odešle je on
+async function resumeDeferred(recovered) {
+  const state = await getState();
+  if (!recovered && !state.pendingNotifications?.length && !state.quietEndAt) return;
+  const settings = await AlzaCore.getSettings();
+  const hasAlarm = async (name) => Boolean(await chrome.alarms.get(name).catch(() => null));
+  if (AlzaCore.isQuietTime(settings)) {
+    if (!(await hasAlarm(QUIET_END_ALARM_NAME))) await scheduleQuietEnd(settings);
+    return;
+  }
+  if (!recovered && ((await hasAlarm(QUIET_END_ALARM_NAME)) || (await hasAlarm(NOTIFY_RETRY_ALARM_NAME)))) return;
+  // afterReset: false – volá se z obnovy stavu po startu (staleRunReset), ta by čekala sama na sebe
+  await flushPendingNotifications({ afterReset: false });
 }
 
 // === Připomínka cashbacku ===
@@ -781,10 +963,9 @@ async function updateCashbackReminders() {
     }
     // Registrace se otevřela až těsně před koncem – druhé upozornění by přišlo hned po prvním
     const soonToo = reminder.registerUntil > 0 && now >= reminder.registerUntil - AlzaCore.cashbackSoonDays * AlzaCore.dayMs;
+    // Příznaky se uloží až po úspěšném odeslání – selhaná připomínka se zkusí znovu s další kontrolou
     const flags = { notifiedOpen: true, ...((step === "soon" || soonToo) && { notifiedSoon: true }) };
-    if (set[key]) Object.assign(set[key], flags);
-    else merge[key] = { ...merge[key], ...flags };
-    notify.push({ key, reminder, step });
+    notify.push({ key, reminder, step, flags });
   });
 
   if (Object.keys(set).length > 0 || Object.keys(merge).length > 0 || remove.length > 0) {
@@ -792,11 +973,17 @@ async function updateCashbackReminders() {
     await AlzaStore.run({ type: "patchMap", key: remindersKey, set, merge, remove, existingOnly: true });
   }
   if (dueInQuiet) await scheduleQuietEnd(settings, now);
-  for (const { key, reminder, step } of notify) {
+  for (const { key, reminder, step, flags } of notify) {
     // Mezitím „Hotovo“ v popupu (nebo smazání dat) – už neupozorňovat
     const { [remindersKey]: latest = {} } = await chrome.storage.local.get(remindersKey);
     if (!latest?.[key] || latest[key].done) continue;
-    await notifyCashback(reminder, step, settings).catch((error) => console.error("Připomínku cashbacku se nepodařilo odeslat:", error));
+    try {
+      await notifyCashback(reminder, step, settings);
+    } catch (error) {
+      console.error("Připomínku cashbacku se nepodařilo odeslat:", error);
+      continue;
+    }
+    await AlzaStore.run({ type: "patchMap", key: remindersKey, merge: { [key]: flags }, existingOnly: true });
   }
 }
 
@@ -891,22 +1078,36 @@ async function notifyCashback(reminder, step, settings) {
 // Konec tichých hodin: odložené notifikace a připomínky cashbacku hned, ne až s další kontrolou. Běžící kontrola
 // je odešle sama
 // afterReset = false jen z obnovy stavu po startu (staleRunReset) – ta by čekala sama na sebe
-async function flushPendingNotifications({ afterReset = true } = {}) {
+// reminders = false: jen notifikace (další pokus o doručení – alarm alzaNotifyRetry)
+async function flushPendingNotifications({ afterReset = true, reminders = true } = {}) {
   // Po startu může být ve stavu ještě „running“ z přerušeného běhu – odložené notifikace by počkaly až na další běh
   if (afterReset) await staleRunReset;
   const settings = await AlzaCore.getSettings();
-  if (AlzaCore.isQuietTime(settings)) return; // Tiché hodiny se mezitím změnily – odešle je další kontrola
+  if (AlzaCore.isQuietTime(settings)) {
+    // Tiché hodiny se mezitím změnily, nebo do nich padl další pokus o doručení – co čeká, pošle alarm jejich konce
+    const state = await getState();
+    if (state.pendingNotifications?.length || state.quietEndAt) await scheduleQuietEnd(settings);
+    return;
+  }
   const pending = await withStateLock(async () => {
     const state = await getState();
-    if (state.running || !state.pendingNotifications?.length) return [];
-    await saveState({ ...state, pendingNotifications: [] });
-    return state.pendingNotifications;
+    // Běžící kontrola odešle odložené notifikace sama (finishRun). Značka čekání na konec tichých hodin (quietEndAt)
+    // je vyřízená, jakmile jdou na řadu i připomínky
+    const waiting = !state.running && state.pendingNotifications?.length ? state.pendingNotifications : [];
+    const settled = reminders && state.quietEndAt;
+    if (waiting.length === 0 && !settled) return [];
+    const { quietEndAt, ...rest } = state;
+    await saveState({ ...rest, ...(!settled && quietEndAt && { quietEndAt }), ...(waiting.length > 0 && { pendingNotifications: [] }) });
+    return waiting;
   });
   // Každé zvlášť – chyba notifikace nesmí zastavit připomínky
-  await notifyChanges(pending).catch((error) => console.error("Odložené notifikace se nepodařilo odeslat:", error));
-  if (!running) {
+  await notifyChanges(pending)
+    .then(requeueNotifications)
+    .catch((error) => console.error("Odložené notifikace se nepodařilo odeslat:", error));
+  if (reminders && !running) {
     await processCashbackReminders();
     await processWarrantyReminders();
+    await processVoucherReminders();
   }
 }
 
@@ -921,6 +1122,25 @@ async function recoverJournal(state, journal) {
     recent,
     unseen: [...new Set([...unseen, ...shown.map(({ url, domain }) => AlzaCore.getProductKey(domain, url))])].filter((key) => recent.some((item) => item.key === key)),
   };
+}
+
+// Deník přerušeného běhu nese i to, co běh ukládá až na konci (finishRun): stav cílové ceny (targetState) a nejnižší
+// cenu, o které jde upozornění po nákupu (purchase.notifiedPrice u změny „purchase“). Deník zapsaný starší verzí
+// stav cíle nemá – změna „target“ sama znamená, že cena pod cíl klesla
+async function saveJournalStates(journal) {
+  const targets = {};
+  const purchases = {};
+  journal.forEach((item) => {
+    if (!item || !AlzaCore.isKnownDomain(item.domain) || !AlzaCore.isAlzaUrl(item.url) || !Array.isArray(item.changes)) return;
+    const key = AlzaCore.getProductKey(item.domain, item.url);
+    const has = (kind) => item.changes.some((change) => change?.kind === kind);
+    if (item.targetState && typeof item.targetState === "object") targets[key] = { price: item.targetState.price, below: Boolean(item.targetState.below) };
+    else if (has("target")) targets[key] = { below: true };
+    const { notifiedPrice, lastBoughtAt, boughtAt } = item.purchase || {};
+    if (has("purchase") && Number.isFinite(notifiedPrice)) purchases[key] = { notifiedPrice, ...(lastBoughtAt ? { lastBoughtAt } : { boughtAt }) };
+  });
+  await saveTargetStates(targets);
+  await savePurchaseStates(purchases);
 }
 
 // Deník běhu: změny zjištěné do této chvíle. Přeruší-li se běh (zavřený prohlížeč, uspaná služba), obnoví je
@@ -980,30 +1200,28 @@ async function getWatchedProducts() {
   return [...products.values()];
 }
 
-// Hlídání po nákupu: zlevnění pod nákupní cenu ve lhůtě pro vrácení – „Koupili jste za X, teď stojí Y. Do D ho
-// můžete vrátit a koupit znovu.“ Každé nové minimum jen jednou (notifiedPrice)
+// Hlídání po nákupu: zlevnění pod nákupní cenu ve lhůtě pro vrácení – „Koupili jste za X, teď stojí Y. Vrátit a
+// koupit znovu ho můžete nejméně do D.“ Každé nové minimum jen jednou (notifiedPrice)
 // history = historie před právě načtenou cenou – srovnává se s nejnižší cenou k zaplacení kolem nákupu (kód,
 // AlzaPlus+), ne jen s cenou z objednávky; jinak by hlásilo zlevnění, které tu bylo už v den nákupu
 function checkPurchase(product, priceMap, history) {
   const drop = AlzaCore.getPurchaseDrop(product.purchase, priceMap, Date.now(), history);
   if (!drop) return null;
-  purchaseUpdates[AlzaCore.getProductKey(product.domain, product.url)] = drop.lowest;
+  const { lastBoughtAt, boughtAt } = product.purchase;
+  purchaseUpdates[AlzaCore.getProductKey(product.domain, product.url)] = { notifiedPrice: drop.lowest, ...(lastBoughtAt ? { lastBoughtAt } : { boughtAt }) };
   const format = (price) => AlzaCore.formatPrice(price, product.domain);
   const lang = product.textLang || product.lang;
-  const until = AlzaCore.formatTextDate(product.purchase.returnUntil, lang);
+  // Datum končí tečkou („30. 11.“) a věta také – bez ní by v textu byly dvě
+  const until = AlzaCore.formatTextDate(drop.returnUntil ?? product.purchase.returnUntil, lang).replace(/\.$/, "");
   const paid = drop.reference ?? product.purchase.price;
   return { kind: "purchase", text: AlzaCore.translate(lang, "notifyPurchaseDrop", format(paid), format(drop.lowest), until) };
 }
 
 async function savePurchaseStates(updates) {
   if (Object.keys(updates).length === 0) return;
-  // existingOnly: nákup mezitím odstraněný synchronizací (zrušená objednávka) se nevytvoří znovu jako osiřelý záznam
-  await AlzaStore.run({
-    type: "patchMap",
-    key: PURCHASES_KEY,
-    merge: Object.fromEntries(Object.entries(updates).map(([key, price]) => [key, { notifiedPrice: price }])),
-    existingOnly: true,
-  });
+  // existingOnly: nákup mezitím odstraněný synchronizací (zrušená objednávka) se nevytvoří znovu jako osiřelý záznam.
+  // sameBy: synchronizace ho mezitím mohla nahradit jiným nákupem téhož produktu – ten upozornění ještě nedostal
+  await AlzaStore.run({ type: "patchMap", key: PURCHASES_KEY, merge: updates, existingOnly: true, sameBy: ["lastBoughtAt", "boughtAt"] });
 }
 
 // Stav cílové ceny (je pod hranicí?) zapsat až na konci běhu – mezitím ji mohl uživatel změnit
@@ -1014,7 +1232,8 @@ async function saveTargetStates(updates) {
     const { [TARGETS_KEY]: targets = {} } = await chrome.storage.local.get(TARGETS_KEY);
     let changed = false;
     Object.entries(updates).forEach(([key, { price, below }]) => {
-      if (targets[key]?.price !== price) return;
+      // price undefined = stav z deníku běhu starší verze (saveJournalStates) – cena cíle se neporovnává
+      if (!targets[key] || (price !== undefined && targets[key].price !== price)) return;
       targets[key].below = below;
       changed = true;
     });
@@ -1037,7 +1256,7 @@ function checkTarget(product, priceMap, targets, targetUpdates) {
 
   // U cíle za kus i cena za kus ("2,50 Kč/ks (900 Kč)")
   const format = (price) => AlzaCore.formatTargetValue(price, target, product.domain, product.textLang);
-  return { kind: "target", text: AlzaCore.translate(product.textLang, "notifyTargetReached", format(target.price), format(lowest)) };
+  return { kind: "target", text: AlzaCore.translate(product.textLang, "notifyTargetReached", format(target.price), AlzaCore.withLaterRefundNote(product.textLang, format(lowest), priceMap)) };
 }
 
 async function checkProduct(product, force, targets, targetUpdates) {
@@ -1059,8 +1278,9 @@ async function checkProduct(product, force, targets, targetUpdates) {
 
   const result = await fetchProduct(url);
   if (!result.ok) {
-    // blocked: Alza blokuje (403 / 429) nebo má výpadek (5xx) – několik takových po sobě běh ukončí (runWatch)
-    const blocked = [403, 429].includes(result.status) || result.status >= 500;
+    // blocked: Alza blokuje (403 / 429), má výpadek (5xx) nebo neodpovídá (timeout, chyba sítě – i po druhém pokusu
+    // ve fetchProduct) – několik takových po sobě běh ukončí (runWatch). 404 a přesměrování mimo Alzu ne
+    const blocked = result.status === 403 || AlzaCore.isRetryableFetchError(result);
     return { problem: AlzaCore.translate(textLang, "notifyProblemFetch", AlzaCore.localizeError(textLang, result.error)), blocked };
   }
   // Zboží bez DPH (knihy – bez vedlejší ceny „bez DPH“): ověření z historie produktu nebo z jiné stránky. Takový
@@ -1074,7 +1294,7 @@ async function checkProduct(product, force, targets, targetUpdates) {
 
   // Ceny se smí zapsat jen za přihlášeného uživatele a s DPH. Obojí je nastavení účtu, takže by selhaly i další
   // produkty – běh se přeruší. Neověřené DPH jednoho produktu (zboží bez DPH bez historie) ostatní nezastaví
-  if (result.saveProblem) return { problem: AlzaCore.translate(textLang, result.saveProblem), abort: result.saveProblem !== "notifyProblemVatUnknown" };
+  if (result.saveProblem) return { problem: AlzaCore.translate(textLang, result.saveProblem), abort: result.saveProblem !== "notifyProblemVatUnknown", reason: result.saveProblem };
 
   if (!result.isProduct) return { problem: AlzaCore.translate(textLang, "notifyProblemNotProduct") };
 
@@ -1106,8 +1326,9 @@ async function checkProduct(product, force, targets, targetUpdates) {
   // Podezřelá cena (možná chyba čtení) se ohlásí spolu se změnou – neschovává se, ať se neztratí skutečná sleva
   if (changes.length > 0) changes.push(...describeSuspicious(entries, snapshot, product));
 
-  // I záznam ceny – otevřený seznam pak čerstvě zkontrolované ceny znovu nestahuje (mezipaměť 15 min)
-  if (hasPrices) await AlzaStore.run({ type: "mergePrices", domain, records: { [url]: result.prices }, listId: product.listId });
+  // I záznam ceny – otevřený seznam pak čerstvě zkontrolované ceny znovu nestahuje (mezipaměť 15 min). S cenami i
+  // metaúdaje stránky (cena jiného stavu, množstevní slevy) – jinak by v záznamu s novým časem zůstaly staré
+  if (hasPrices) await AlzaStore.run({ type: "mergePrices", domain, records: { [url]: AlzaCore.getPageRecordInput(result) }, listId: product.listId });
 
   return {
     changes,
@@ -1188,7 +1409,7 @@ function filterNotifications(changes, settings, { withRises = false } = {}) {
     shown.length > 0 ? [...shown, ...all.filter((change) => change.kind === "suspicious")].map((change) => change.text) : [];
 
   return changes
-    .map(({ name, url, image, price, listUrl, listName, domain, lang, textLang, changes }) => ({
+    .map(({ name, url, image, price, listUrl, listName, domain, lang, textLang, changes, purchaseOnly }) => ({
       name,
       url,
       image,
@@ -1198,6 +1419,8 @@ function filterNotifications(changes, settings, { withRises = false } = {}) {
       domain,
       lang: textLang || lang,
       lines: withSuspicious(changes, changes.filter((change) => change.kind !== "suspicious" && wanted(change))),
+      // Zboží hlídané jen kvůli nákupu – diagnostika ho skryje i po vypadnutí běhu z logu
+      ...(purchaseOnly && { purchaseOnly: true }),
     }))
     .filter((change) => change.lines.length > 0);
 }
@@ -1221,6 +1444,7 @@ function addRecentChanges(recent = [], notifiable, unseen, at) {
       listName: change.listName || null,
       listUrl: change.listName ? change.listUrl : null,
       lines,
+      ...((change.purchaseOnly || (previous?.purchaseOnly && unseen.includes(key))) && { purchaseOnly: true }),
     });
   });
   return result.slice(0, config.recentChangesMax);
@@ -1264,14 +1488,21 @@ async function seedRecentFromLog() {
 // === Číslo na ikoně ===
 // Počet produktů se změnou od posledního otevření popupu, barva podle kaskády (AlzaCore.getBadgeTone): zelená =
 // aspoň jedno zlevnění, červená = aspoň jedno zdražení, šedá = jen ukončení / nedostupnost. Když žádné nejsou,
-// modré = produkty navržené ke smazání (nehlídané a dlouho nekontrolované), dokud je uživatel neodloží
-const BADGE_COLORS = { down: "#2e7d32", up: "#c62828", off: "#757575" };
+// modré = produkty navržené ke smazání (nehlídané a dlouho nekontrolované), dokud je uživatel neodloží.
+// Přednost má oranžový „!“: kontrola se přerušila (nepřihlášen, ceny bez DPH, Alza blokuje) – ceny se nesbírají
+const BADGE_COLORS = { down: "#2e7d32", up: "#c62828", off: "#757575", alert: "#ef6c00" };
 
-async function updateBadge({ unseen, recent } = {}) {
+async function updateBadge({ unseen, recent, alert } = {}) {
   unseen = Array.isArray(unseen) ? unseen : [];
+  const name = chrome.i18n.getMessage("name");
+  if (alert?.message) {
+    await chrome.action.setBadgeBackgroundColor({ color: BADGE_COLORS.alert });
+    await chrome.action.setBadgeText({ text: "!" });
+    await chrome.action.setTitle({ title: `${name} – ${alert.message}` });
+    return;
+  }
   const { [CLEANUP_KEY]: cleanup = {} } = await chrome.storage.local.get(CLEANUP_KEY);
   const suggest = cleanup.count > 0 && !(cleanup.snoozedUntil > Date.now());
-  const name = chrome.i18n.getMessage("name");
 
   if (unseen.length > 0 || !suggest) {
     await chrome.action.setBadgeBackgroundColor({ color: BADGE_COLORS[AlzaCore.getBadgeTone(recent, unseen)] });
@@ -1315,7 +1546,8 @@ async function markSeen(keys) {
 }
 
 // Odložené notifikace z tichých hodin + nové: jeden záznam za produkt (podle čísla produktu – seznam a nákup můžou
-// mít jinou adresu), řádky bez opakování
+// mít jinou adresu), řádky bez opakování. Počet nepovedených doručení (attempts) se na novou změnu nepřenáší –
+// sloučený záznam má pokusů tolik, kolik ta jeho část, která jich má nejmíň (nová změna = žádný)
 function mergeNotifications(notifications) {
   const byProduct = new Map();
   notifications.forEach((notification) => {
@@ -1323,6 +1555,9 @@ function mergeNotifications(notifications) {
     const existing = byProduct.get(key);
     if (existing) {
       existing.lines = [...new Set([...existing.lines, ...notification.lines])];
+      const attempts = Math.min(existing.attempts || 0, notification.attempts || 0);
+      if (attempts > 0) existing.attempts = attempts;
+      else delete existing.attempts;
     } else {
       byProduct.set(key, { ...notification, lines: [...notification.lines] });
     }
@@ -1330,30 +1565,53 @@ function mergeNotifications(notifications) {
   return [...byProduct.values()];
 }
 
+// Vrací změny, které se nepodařilo doručit – volající je vrátí do fronty (requeueNotifications)
 async function notifyChanges(changes) {
-  if (changes.length === 0) return;
+  if (changes.length === 0) return [];
 
   // Windows ukáže v notifikaci jen pár řádků – po jednom produktu se čte nejlépe
   if (changes.length <= config.maxIndividualNotifications) {
+    const failed = [];
     for (const change of changes) {
       try {
         const iconUrl = await loadProductIcon(change.image);
         await createNotification({ title: change.name, message: change.lines.join("\n"), ...(iconUrl && { iconUrl }) }, change.url);
       } catch (error) {
         console.error("Notifikaci se nepodařilo vytvořit:", error); // Ostatní produkty i tak
+        failed.push(change);
       }
     }
-    return;
+    return failed;
   }
 
   // Víc změn najednou: jen názvy, podrobnosti jsou v logu v popupu
-  await createNotification(
-    {
-      title: AlzaCore.translate(changes[0].lang, "notifySummaryTitle", changes.length),
-      message: changes.map((change) => shortenName(change.name)).join(", "),
-    },
-    changes[0].listUrl
-  );
+  try {
+    await createNotification(
+      {
+        title: AlzaCore.translate(changes[0].lang, "notifySummaryTitle", changes.length),
+        message: changes.map((change) => shortenName(change.name)).join(", "),
+      },
+      changes[0].listUrl
+    );
+  } catch (error) {
+    console.error("Souhrnnou notifikaci se nepodařilo vytvořit:", error);
+    return changes;
+  }
+  return [];
+}
+
+// Nedoručené notifikace zpět do fronty (v popupu „Nedoručené notifikace“ – poznají se podle attempts) a další pokus
+// za config.notifyRetryMs (alarm alzaNotifyRetry; jinak by přišel až s další kontrolou), nejvýš
+// config.notifyMaxAttempts× (trvale zakázané notifikace nesmí frontu držet věčně)
+async function requeueNotifications(failed) {
+  const retry = failed.map((change) => ({ ...change, attempts: (change.attempts || 0) + 1 })).filter((change) => change.attempts < config.notifyMaxAttempts);
+  if (retry.length === 0) return;
+  await withStateLock(async () => {
+    const state = await getState();
+    const pending = mergeNotifications([...retry, ...(state.pendingNotifications || [])]).slice(-config.maxPendingNotifications);
+    await saveState({ ...state, pendingNotifications: pending });
+  });
+  await chrome.alarms.create(NOTIFY_RETRY_ALARM_NAME, { when: Date.now() + config.notifyRetryMs });
 }
 
 // Jeden řádek za druh problému – obvykle mají všechny produkty stejnou příčinu (odhlášení, DPH, změna webu)
@@ -1376,8 +1634,25 @@ function shortenName(name) {
   return name.length > config.maxNameLength ? `${name.slice(0, config.maxNameLength - 1).trimEnd()}…` : name;
 }
 
-// Ukázka všech tří druhů notifikací (debug menu v popupu) – stejné texty jako při skutečném běhu
+// Ukázka všech tří druhů notifikací (tlačítko Vyzkoušet notifikace) – stejné texty jako při skutečném běhu.
+// Vrací { sent, failed, error, level }: „sent“ = prohlížeč notifikaci přijal, jestli ji systém ukáže, už nepozná
+// (macOS / Windows ji může zahodit bez chyby)
 async function sendTestNotifications() {
+  const result = { sent: 0, failed: 0, error: "", level: null };
+  try {
+    result.level = (await chrome.notifications.getPermissionLevel?.()) ?? null; // Firefox ji nemá
+  } catch {
+    // Úroveň je jen pro radu
+  }
+  // notifyChanges vrací nedoručené produkty – přepočet na notifikace (nad limitem jedna souhrnná)
+  const count = (changes, failed) => {
+    const single = changes.length <= config.maxIndividualNotifications;
+    const total = single ? changes.length : 1;
+    const lost = single ? failed.length : Math.min(failed.length, 1);
+    result.sent += total - lost;
+    result.failed += lost;
+  };
+
   const domain = "alza_cz";
   const lang = AlzaCore.getDisplayLanguage(await AlzaCore.getSettings(), "cz");
   const url = AlzaCore.domains[domain].origin;
@@ -1386,19 +1661,27 @@ async function sendTestNotifications() {
   const lines = describeChanges(last, { benefit: 1199, original: 1399, discount: 1099 }, "in", { domain, lang }).map((change) => change.text);
   lines.push(AlzaCore.translate(lang, "notifyTargetReached", AlzaCore.formatPrice(1100, domain), AlzaCore.formatPrice(1099, domain)));
 
-  await notifyChanges([product("Ukázkový produkt – změna u jednoho produktu", lines, "https://image.alza.cz/products/AUPR1389d/AUPR1389d.jpg")]);
+  const single = [product("Ukázkový produkt – změna u jednoho produktu", lines, "https://image.alza.cz/products/AUPR1389d/AUPR1389d.jpg")];
+  count(single, await notifyChanges(single));
   await sleep(1500);
-  await notifyChanges(
-    ["3M Scotch-FIX™ Oboustranná extrémní interiérová montážní páska", "Ukázkový produkt B", "Ukázkový produkt C", "Ukázkový produkt D"].map(
-      (name) => product(name, lines)
-    )
+  const several = ["3M Scotch-FIX™ Oboustranná extrémní interiérová montážní páska", "Ukázkový produkt B", "Ukázkový produkt C", "Ukázkový produkt D"].map(
+    (name) => product(name, lines)
   );
+  count(several, await notifyChanges(several));
   await sleep(1500);
-  await notifyProblems([
-    { ...product("Ukázkový produkt E"), message: AlzaCore.translate(lang, "notifyProblemNoData") },
-    { ...product("Ukázkový produkt F"), message: AlzaCore.translate(lang, "notifyProblemFetch", "HTTP 403") },
-    { ...product("Ukázkový produkt G"), message: AlzaCore.translate(lang, "notifyProblemFetch", "HTTP 403") },
-  ]);
+  try {
+    await notifyProblems([
+      { ...product("Ukázkový produkt E"), message: AlzaCore.translate(lang, "notifyProblemNoData") },
+      { ...product("Ukázkový produkt F"), message: AlzaCore.translate(lang, "notifyProblemFetch", "HTTP 403") },
+      { ...product("Ukázkový produkt G"), message: AlzaCore.translate(lang, "notifyProblemFetch", "HTTP 403") },
+    ]);
+    result.sent++;
+  } catch (error) {
+    console.error("Zkušební notifikaci problému se nepodařilo vytvořit:", error);
+    result.failed++;
+    result.error = String(error?.message || error);
+  }
+  return result;
 }
 
 // Notifikace neumí vzdálený obrázek – stáhne se a předá jako data URL. Bez obrázku null (ikona doplňku)

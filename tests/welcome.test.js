@@ -64,6 +64,7 @@ const NOT_IN_WIZARD = {
   energyYears: "podrobnost výpočtu ceny provozu – jen v nastavení",
   energyCyclesPerWeek: "podrobnost výpočtu ceny provozu – jen v nastavení",
   energyHoursPerDay: "podrobnost výpočtu ceny provozu – jen v nastavení",
+  monthlyBudget: "volitelný limit – jen v nastavení (Sledování cen)",
 };
 
 test("průvodce: každá volba nastavení je v průvodci, nebo na seznamu výjimek", () => {
@@ -101,6 +102,21 @@ test("novinky: odrážky má každé vydání ve všech jazycích ve stejném po
       texts[lang].forEach((text) => assert.ok(typeof text === "string" && text.trim().length > 0, `${version} ${lang} – prázdná odrážka`));
     });
   });
+});
+
+// Pojistka, že novinky pro vydání nechybí: jakmile changelog dostane sekci nové verze, musí ji znát i releases
+// (jinak se po aktualizaci neotevře Co je nového ani nerozsvítí značka Novinky). Záznam smí být napřed (chystané
+// vydání pod „Nevydáno“), ale ne novější než verze v manifestu – takové novinky by se neukázaly nikomu
+test("novinky: nejnovější vydání v releases není starší než poslední vydaná sekce changelogu ani novější než manifest", () => {
+  const { AlzaCore } = loadCore();
+  const newest = AlzaCore.releases[0].version;
+  ["CHANGELOG-chrome.md", "CHANGELOG-firefox.md"].forEach((file) => {
+    const released = read(file).match(/^## (\d{4}\.\d{1,2}\.\d{1,2})\s*$/m)?.[1];
+    assert.ok(released, `${file}: sekce vydané verze`);
+    assert.ok(AlzaCore.compareVersions(newest, released) >= 0, `${file}: vydání ${released} nemá záznam v AlzaCore.releases (nejnovější je ${newest})`);
+  });
+  const { version } = JSON.parse(read("manifest.json"));
+  assert.ok(AlzaCore.compareVersions(newest, version) <= 0, `novinky ${newest} jsou novější než verze ${version} v manifestu`);
 });
 
 test("novinky: porovnání verzí a neviděná vydání", () => {

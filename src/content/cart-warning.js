@@ -140,7 +140,7 @@ Object.assign(AlzaPriceTracker, {
           this.showCartAdded(box, header, list, actions, withCode.code, close);
         } catch (error) {
           // Do konzole jen stav odpovědi – Message Alzy může obsahovat kód
-          console.error("Alza Price Tracker – vložení do košíku s kódem:", error?.logInfo || error?.name || "Error");
+          console.error("AllyZap – vložení do košíku s kódem:", error?.logInfo || error?.name || "Error");
           // Nejasný výsledek (požadavek odešel, odpověď nečekaná) – zboží možná v košíku je, opakování by ho
           // mohlo vložit dvakrát. Místo „zkusit znovu“ odkaz do košíku
           if (error?.ambiguous) {
@@ -224,8 +224,9 @@ Object.assign(AlzaPriceTracker, {
     }
     const result = (await response.json().catch(() => null))?.d;
     const status = `HTTP ${response.status}${typeof result?.ErrorLevel === "number" ? `, ErrorLevel ${result.ErrorLevel}` : ""}`;
-    // Alza vložení odmítla (chyba serveru, neplatný kód…) – nic se nevložilo, jde zkusit bez kódu
-    if (!response.ok) throw fail(`HTTP ${response.status}`, status, false);
+    // 4xx: Alza vložení odmítla – nic se nevložilo, jde zkusit bez kódu.
+    // 5xx (chyba serveru, timeout brány) mohla přijít až po vložení – nevíme, opakovat naslepo nelze
+    if (!response.ok) throw fail(`HTTP ${response.status}`, status, response.status >= 500 && !(result?.ErrorLevel > 0));
     if (result?.ErrorLevel > 0) throw fail(result.Message || status, status, false);
     // Úspěšná odpověď bez očekávaného obsahu – nevíme, jestli se vložilo
     if (!result || !(result.Id || result.ItemsCount)) throw fail(status, status, true);

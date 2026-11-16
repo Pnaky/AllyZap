@@ -1,6 +1,6 @@
-# Alza Price Insight pro Safari
+# AllyZap pro Safari
 
-Safari na macOS načítá rozšíření z aplikace, ne ze složky jako Chrome nebo Firefox. Složka `safari/` proto ze stejných souborů rozšíření (`src/`, `css/`, `img/`, `_locales/`) sestaví aplikaci **Alza Price Insight.app** – obal, ve kterém je rozšíření, a zároveň odesílatele notifikací. Rozšíření umí v Safari totéž co v Chrome a Firefoxu.
+Safari na macOS načítá rozšíření z aplikace, ne ze složky jako Chrome nebo Firefox. Složka `safari/` proto ze stejných souborů rozšíření (`src/`, `css/`, `img/`, `_locales/`) sestaví aplikaci **AllyZap.app** – obal, ve kterém je rozšíření, a zároveň odesílatele notifikací. Rozšíření umí v Safari totéž co v Chrome a Firefoxu.
 
 Jde o experimentální verzi: aplikaci si každý sestaví na vlastním Macu, v App Storu není.
 
@@ -12,17 +12,17 @@ Požadavky: macOS 13 nebo novější, Safari 18 nebo novější, Command Line To
 safari/build.sh --install
 ```
 
-Sestaví `safari/build/Alza Price Insight.app`, nainstaluje ji do `~/Applications`, zaregistruje rozšíření v Safari a aplikaci spustí. Bez `--install` jen sestaví. Aktualizace: `git pull` a stejný příkaz znovu.
+Sestaví `safari/build/AllyZap.app`, nainstaluje ji do `~/Applications`, zaregistruje rozšíření v Safari a aplikaci spustí. Bez `--install` jen sestaví. Aktualizace: `git pull` a stejný příkaz znovu.
 
 Do průvodce nastavením (`src/welcome/welcome.html`) vkládá `safari/tools/prepare.py` dva skripty pro Safari podle přesného textu. Když se změní, sestavení skončí srozumitelnou chybou místo nefunkčního rozšíření. Ostatní soubory rozšíření zůstávají beze změny.
 
-Volby: `SIGN_IDENTITY` (podpis, viz níže), `BUNDLE_ID` (výchozí `local.AlzaPriceInsight`), `INSTALL_DIR` (výchozí `~/Applications`), `BUILD_DIR`, `NO_OPEN=1` (po instalaci nespouštět aplikaci), `safari/build.sh --help`.
+Volby: `SIGN_IDENTITY` (podpis, viz níže), `BUNDLE_ID` (výchozí `cz.janpnakovic.allyzap`), `INSTALL_DIR` (výchozí `~/Applications`), `BUILD_DIR`, `NO_OPEN=1` (po instalaci nespouštět aplikaci), `safari/build.sh --help`.
 
 ## Zapnutí v Safari
 
-1. Spusťte aplikaci **Alza Price Insight** a povolte jí notifikace.
-2. Safari → Nastavení → Rozšíření → zaškrtněte **Alza Price Insight**.
-3. V průvodci nastavením klikněte nahoře na **Povolit přístup na Alzu** a zvolte **Vždy povolit** (případně Safari → Nastavení → Rozšíření → Alza Price Insight → Upravit webové stránky).
+1. Spusťte aplikaci **AllyZap** a povolte jí notifikace.
+2. Safari → Nastavení → Rozšíření → zaškrtněte **AllyZap**.
+3. V průvodci nastavením klikněte nahoře na **Povolit přístup na Alzu** a zvolte **Vždy povolit** (případně Safari → Nastavení → Rozšíření → AllyZap → Upravit webové stránky).
 
 Aplikace bez vývojářského certifikátu je podepsaná jen „ad hoc“ a Safari ji načte, až v Nastavení → Pokročilé zapnete **Zobrazit funkce pro webové vývojáře** a v Nastavení → Vývojář **Povolit nepodepsaná rozšíření**. Tuto volbu Safari po každém ukončení vypne – natrvalo to vyřeší podpis.
 
@@ -71,4 +71,4 @@ Spustí stránku na pozadí a průvodce ve WKWebView (WebKit – stejný engine 
 
 ## Odinstalace
 
-V Safari → Nastavení → Rozšíření vypněte Alza Price Insight (data si předtím můžete zálohovat v nastavení rozšíření) a smažte `~/Applications/Alza Price Insight.app`. Soubory aplikace zůstanou v `~/Library/Containers/local.AlzaPriceInsight*`.
+V Safari → Nastavení → Rozšíření vypněte AllyZap (data si předtím můžete zálohovat v nastavení rozšíření) a smažte `~/Applications/AllyZap.app`. Soubory aplikace zůstanou v `~/Library/Containers/cz.janpnakovic.allyzap*`.

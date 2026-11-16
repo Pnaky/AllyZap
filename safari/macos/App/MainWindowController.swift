@@ -7,8 +7,10 @@ final class MainWindowController: NSWindowController {
     private static let contentWidth: CGFloat = 540
     private static let textIndent: CGFloat = 34
 
-    private let extensionStatus = StatusLine()
-    private let notificationStatus = StatusLine()
+    // Text stavu se zalamuje do šířky obsahu (bez ikony) – dlouhý stav by jinak roztáhl sloupec mimo okno
+    private static let statusTextWidth = contentWidth - textIndent - 22
+    private let extensionStatus = StatusLine(maxTextWidth: MainWindowController.statusTextWidth)
+    private let notificationStatus = StatusLine(maxTextWidth: MainWindowController.statusTextWidth)
     private let allowButton = NSButton()
     private let notificationSettingsButton = NSButton()
     private let testButton = NSButton()
@@ -21,7 +23,7 @@ final class MainWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Alza Price Insight"
+        window.title = "AllyZap"
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.contentView = makeContent()
@@ -64,6 +66,7 @@ final class MainWindowController: NSWindowController {
                         : T("Stav rozšíření se nepodařilo zjistit", "Couldn't get the extension state"))
                     _ = error
                 }
+                self.fitWindow()
             }
         }
 
@@ -82,8 +85,20 @@ final class MainWindowController: NSWindowController {
                 }
                 self.allowButton.isHidden = status != .notDetermined
                 self.notificationSettingsButton.isHidden = status == .notDetermined
+                self.fitWindow()
             }
         }
+    }
+
+    /// Výška okna podle obsahu (stav nebo výsledek zkoušky může mít dva řádky); horní okraj okna zůstává na místě
+    private func fitWindow() {
+        guard let window, let content = window.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        let size = content.fittingSize
+        guard abs(size.height - content.frame.height) > 0.5 else { return }
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: NSSize(width: content.frame.width, height: size.height)))
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+        window.setFrame(frame, display: true)
     }
 
     // MARK: - Akce
@@ -102,21 +117,14 @@ final class MainWindowController: NSWindowController {
     }
 
     @objc private func openNotificationSettings() {
-        let id = Bundle.main.bundleIdentifier ?? ""
-        let candidates = [
-            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)",
-            "x-apple.systempreferences:com.apple.preference.notifications?id=\(id)",
-        ]
-        for candidate in candidates {
-            if let url = URL(string: candidate), NSWorkspace.shared.open(url) { return }
-        }
+        AlzaShared.openNotificationSettings()
     }
 
     @objc private func sendTestNotification() {
         testResult.stringValue = ""
         AlzaNotifications.post(
             id: nil,
-            title: T("Alza Price Insight – zkušební notifikace", "Alza Price Insight – test notification"),
+            title: T("AllyZap – zkušební notifikace", "AllyZap – test notification"),
             body: T("Takhle přijde upozornění na změnu ceny. Kliknutí otevře produkt v Safari.",
                     "This is how a price change alert looks. Clicking it opens the product in Safari."),
             url: URL(string: "https://www.alza.cz/"),
@@ -140,7 +148,7 @@ final class MainWindowController: NSWindowController {
         icon.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([icon.widthAnchor.constraint(equalToConstant: 64), icon.heightAnchor.constraint(equalToConstant: 64)])
 
-        let title = Self.label(T("Alza Price Insight pro Safari", "Alza Price Insight for Safari"), size: 20, weight: .semibold)
+        let title = Self.label(T("AllyZap pro Safari", "AllyZap for Safari"), size: 20, weight: .semibold)
         let subtitle = Self.label(
             T("Verze \(version) · rozšíření pro Safari", "Version \(version) · Safari extension"),
             size: 12, color: .secondaryLabelColor, width: Self.contentWidth - 80
@@ -154,10 +162,10 @@ final class MainWindowController: NSWindowController {
         header.alignment = .centerY
 
         let safariText = isAdHocSigned
-            ? T("Rozšíření je sestavené na tomto Macu bez vývojářského certifikátu. Safari ho načte, až v Safari → Nastavení → Pokročilé zapnete „Zobrazit funkce pro webové vývojáře“ a pak v Nastavení → Vývojář zapnete „Povolit nepodepsaná rozšíření“. Nakonec v Nastavení → Rozšíření zaškrtněte Alza Price Insight. Safari tuto volbu po ukončení vypne – po každém spuštění Safari ji zapněte znovu (data rozšíření zůstanou).",
-                "The extension was built on this Mac without a developer certificate. Safari loads it once you turn on “Show features for web developers” in Safari → Settings → Advanced and then “Allow unsigned extensions” in Settings → Developer. Then check Alza Price Insight in Settings → Extensions. Safari turns this option off when it quits – turn it on again after each Safari launch (the extension keeps its data).")
-            : T("V Safari → Nastavení → Rozšíření zaškrtněte Alza Price Insight.",
-                "Check Alza Price Insight in Safari → Settings → Extensions.")
+            ? T("Rozšíření je sestavené na tomto Macu bez vývojářského certifikátu. Safari ho načte, až v Safari → Nastavení → Pokročilé zapnete „Zobrazit funkce pro webové vývojáře“ a pak v Nastavení → Vývojář zapnete „Povolit nepodepsaná rozšíření“. Nakonec v Nastavení → Rozšíření zaškrtněte AllyZap. Safari tuto volbu po ukončení vypne – po každém spuštění Safari ji zapněte znovu (data rozšíření zůstanou).",
+                "The extension was built on this Mac without a developer certificate. Safari loads it once you turn on “Show features for web developers” in Safari → Settings → Advanced and then “Allow unsigned extensions” in Settings → Developer. Then check AllyZap in Settings → Extensions. Safari turns this option off when it quits – turn it on again after each Safari launch (the extension keeps its data).")
+            : T("V Safari → Nastavení → Rozšíření zaškrtněte AllyZap.",
+                "Check AllyZap in Safari → Settings → Extensions.")
         let safariSection = Self.section(
             number: 1,
             title: T("Zapněte rozšíření v Safari", "Turn on the extension in Safari"),
@@ -170,8 +178,8 @@ final class MainWindowController: NSWindowController {
             number: 2,
             title: T("Povolte přístup na Alzu", "Allow access to Alza"),
             status: nil,
-            text: T("Safari pustí rozšíření na web, až když to schválíte. Po zapnutí se otevře průvodce s tlačítkem Povolit přístup na Alzu – v nabídce Safari zvolte Vždy povolit. Jinak na stránce Alzy klikněte na ikonu rozšíření na liště, nebo v Safari → Nastavení → Rozšíření → Alza Price Insight → Upravit webové stránky nastavte Alze Povolit. Bez přístupu se ceny nezobrazí ani nehlídají na pozadí.",
-                    "Safari only lets the extension onto a website after you approve it. Once turned on, the extension opens a setup guide with an Allow access to Alza button – choose Always Allow in Safari's prompt. Otherwise click the extension icon in the toolbar on an Alza page, or set Alza to Allow in Safari → Settings → Extensions → Alza Price Insight → Edit Websites. Without access, prices are neither shown nor watched in the background."),
+            text: T("Safari pustí rozšíření na web, až když to schválíte. Po zapnutí se otevře průvodce s tlačítkem Povolit přístup na Alzu – v nabídce Safari zvolte Vždy povolit. Jinak na stránce Alzy klikněte na ikonu rozšíření na liště, nebo v Safari → Nastavení → Rozšíření → AllyZap → Upravit webové stránky nastavte Alze Povolit. Bez přístupu se ceny nezobrazí ani nehlídají na pozadí.",
+                    "Safari only lets the extension onto a website after you approve it. Once turned on, the extension opens a setup guide with an Allow access to Alza button – choose Always Allow in Safari's prompt. Otherwise click the extension icon in the toolbar on an Alza page, or set Alza to Allow in Safari → Settings → Extensions → AllyZap → Edit Websites. Without access, prices are neither shown nor watched in the background."),
             buttons: []
         )
 
@@ -298,14 +306,18 @@ final class StatusLine: NSStackView {
     enum Kind { case ok, todo, unknown }
 
     private let icon = NSImageView()
-    private let text = NSTextField(labelWithString: "…")
+    private let text = NSTextField(wrappingLabelWithString: "…")
 
-    init() {
+    init(maxTextWidth: CGFloat) {
         super.init(frame: .zero)
         orientation = .horizontal
         spacing = 6
         alignment = .centerY
         text.font = .systemFont(ofSize: 13, weight: .medium)
+        text.isSelectable = false
+        text.preferredMaxLayoutWidth = maxTextWidth
+        text.translatesAutoresizingMaskIntoConstraints = false
+        text.widthAnchor.constraint(lessThanOrEqualToConstant: maxTextWidth).isActive = true
         icon.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([icon.widthAnchor.constraint(equalToConstant: 16), icon.heightAnchor.constraint(equalToConstant: 16)])
         addArrangedSubview(icon)

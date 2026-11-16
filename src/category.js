@@ -43,24 +43,29 @@ const AlzaUnitPrice = {
   parameterClass: "alza-price-tracker-param-price", // Cena za parametr (Kč/TB…) tam, kde Alza cenu za jednotku neukazuje
   discountSteps: [0, 10, 20, 30, 40, 50], // Volby filtru „Sleva aspoň X %“ (0 = vše)
   filteredAttribute: "data-alza-price-tracker-discount-hidden", // Produkt skrytý filtrem slev (main.css)
+  // Produkt nebo značka skrytá uživatelem (paměť prohlížení – listing-memory.js ho nastavuje a po změně volá
+  // scheduleUpdate): do počtů filtru, do „Seřazeno N“ ani mezi kandidáty „Spočítat provoz“ se nepočítá
+  memoryHiddenAttribute: "data-alza-price-tracker-memory-hidden",
 
   translations: {
     cz: {
       withAlzaPlus: "s AlzaPlus+",
       withCode: "se slevovým kódem",
       unitPriceHint: "Alza počítá cenu za jednotku z ceny bez AlzaPlus+ a slevových kódů.\n{0} / {1} = {2}",
-      parameterHint: "Price Insight: přepočet z nejnižší ceny, kterou zaplatíte (i s AlzaPlus+ a slevovým kódem).\n{0} / {1} = {2}",
+      parameterHint: "AllyZap: přepočet z nejnižší ceny, kterou zaplatíte (i s AlzaPlus+ a slevovým kódem).\n{0} / {1} = {2}",
       // Štítek ceny provozu podle počtu let: 1 rok / 2–4 roky / 5 a více let
       energyLabelOne: "provoz 1 rok: {1}",
       energyLabelFew: "provoz {0} roky: {1}",
       energyLabelMany: "provoz {0} let: {1}",
-      energyHintYear: "Price Insight: odhad ceny elektřiny (počet let: {4}).\n{0} kWh/rok × {1}/kWh × {4} = {2}\nS pořizovací cenou celkem {3}. Cenu elektřiny a počet let změníte v nastavení rozšíření.",
-      energyHintCycles: "Price Insight: odhad ceny elektřiny (počet let: {5}).\n{0} kWh/100 cyklů × {1}× týdně = {2} kWh/rok × {3}/kWh × {5} = {4}\nS pořizovací cenou celkem {6}. Cenu elektřiny, počet let a praní týdně změníte v nastavení rozšíření.",
+      energyHintYear: "AllyZap: odhad ceny elektřiny (počet let: {4}).\n{0} kWh/rok × {1}/kWh × {4} = {2}\nS pořizovací cenou celkem {3}. Cenu elektřiny a počet let změníte v nastavení rozšíření.",
+      energyHintCycles: "AllyZap: odhad ceny elektřiny (počet let: {5}).\n{0} kWh/100 cyklů × {1}× týdně = {2} kWh/rok × {3}/kWh × {5} = {4}\nS pořizovací cenou celkem {6}. Cenu elektřiny, počet let a praní týdně změníte v nastavení rozšíření.",
+      energyHintHours: "AllyZap: odhad ceny elektřiny (počet let: {5}).\n{0} kWh/1000 h × {1} h denně = {2} kWh/rok × {3}/kWh × {5} = {4}\nS pořizovací cenou celkem {6}. Cenu elektřiny, počet let a hodiny denně změníte v nastavení rozšíření.",
       sortTabEnergy: "S provozem",
       sortStartEnergy: "Seřadit podle ceny včetně provozu",
       sortStartHintEnergy: "Načte všechny produkty výpisu a seřadí je podle pořizovací ceny a elektřiny za zvolený počet let dohromady – od nejlevnějšího celkem.",
-      sortTabActiveHintEnergy: "Price Insight: seřazeno podle ceny včetně provozu. Kliknutím znovu řazení zrušíte.",
+      sortTabActiveHintEnergy: "AllyZap: seřazeno podle ceny včetně provozu. Kliknutím znovu řazení zrušíte.",
       sortDoneEnergy: "Seřazeno {0} produktů podle ceny včetně provozu",
+      sortNoEnergy: "bez údaje o spotřebě: {0}",
       sortStart: "Seřadit podle skutečné ceny za jednotku",
       sortStartHint: "Načte všechny produkty výpisu a seřadí je podle nejnižší ceny za jednotku – i s AlzaPlus+ a slevovými kódy. Alzino řazení „Nejlevnější za jednotku“ je nezapočítává.",
       sortCancel: "Zrušit řazení",
@@ -74,7 +79,7 @@ const AlzaUnitPrice = {
       sortPartialUnknown: "Seřazeno prvních {0} produktů, výpis pokračuje",
       sortLoadFailedUnknown: "Další produkty se nepodařilo načíst – seřazeno prvních {0}",
       sortTab: "Za jednotku",
-      sortTabActiveHint: "Price Insight: seřazeno podle skutečné ceny za jednotku (i s AlzaPlus+ a slevovými kódy). Kliknutím znovu řazení zrušíte.",
+      sortTabActiveHint: "AllyZap: seřazeno podle skutečné ceny za jednotku (i s AlzaPlus+ a slevovými kódy). Kliknutím znovu řazení zrušíte.",
       discountLabel: "Sleva",
       discountAll: "vše",
       discountMin: "aspoň {0} %",
@@ -87,22 +92,31 @@ const AlzaUnitPrice = {
       filterPartial: "Vyhovuje {0} z {1} načtených (výpis má {2})",
       filterPartialUnknown: "Vyhovuje {0} z {1} načtených (výpis pokračuje)",
       filterNarrow: "Pro výběr ze všech zužte výpis filtry Alzy (do 500 produktů).",
+      energyFetchText: "Televize a monitory mají spotřebu jen na stránce produktu – bez ceny provozu: {0}",
+      energyFetchButton: "Spočítat provoz ({0})",
+      energyFetchLoading: "Načítám spotřebu {0} / {1}…",
+      energyFetchDone: "Spotřeba načtena ({0})",
+      energyFetchFailed: "Načítání přerušeno – Alza odmítla další dotazy (načteno {0})",
+      energyFetchWait: "Zkuste to znovu za pár minut.",
+      energyFetchErrors: "Načítání přerušeno – stránky produktů se nepodařilo načíst (načteno {0})",
     },
     sk: {
       withAlzaPlus: "s AlzaPlus+",
       withCode: "so zľavovým kódom",
       unitPriceHint: "Alza počíta cenu za jednotku z ceny bez AlzaPlus+ a zľavových kódov.\n{0} / {1} = {2}",
-      parameterHint: "Price Insight: prepočet z najnižšej ceny, ktorú zaplatíte (aj s AlzaPlus+ a zľavovým kódom).\n{0} / {1} = {2}",
+      parameterHint: "AllyZap: prepočet z najnižšej ceny, ktorú zaplatíte (aj s AlzaPlus+ a zľavovým kódom).\n{0} / {1} = {2}",
       energyLabelOne: "prevádzka 1 rok: {1}",
       energyLabelFew: "prevádzka {0} roky: {1}",
       energyLabelMany: "prevádzka {0} rokov: {1}",
-      energyHintYear: "Price Insight: odhad ceny elektriny (počet rokov: {4}).\n{0} kWh/rok × {1}/kWh × {4} = {2}\nS obstarávacou cenou spolu {3}. Cenu elektriny a počet rokov zmeníte v nastaveniach rozšírenia.",
-      energyHintCycles: "Price Insight: odhad ceny elektriny (počet rokov: {5}).\n{0} kWh/100 cyklov × {1}× týždenne = {2} kWh/rok × {3}/kWh × {5} = {4}\nS obstarávacou cenou spolu {6}. Cenu elektriny, počet rokov a praní týždenne zmeníte v nastaveniach rozšírenia.",
+      energyHintYear: "AllyZap: odhad ceny elektriny (počet rokov: {4}).\n{0} kWh/rok × {1}/kWh × {4} = {2}\nS obstarávacou cenou spolu {3}. Cenu elektriny a počet rokov zmeníte v nastaveniach rozšírenia.",
+      energyHintCycles: "AllyZap: odhad ceny elektriny (počet rokov: {5}).\n{0} kWh/100 cyklov × {1}× týždenne = {2} kWh/rok × {3}/kWh × {5} = {4}\nS obstarávacou cenou spolu {6}. Cenu elektriny, počet rokov a praní týždenne zmeníte v nastaveniach rozšírenia.",
+      energyHintHours: "AllyZap: odhad ceny elektriny (počet rokov: {5}).\n{0} kWh/1000 h × {1} h denne = {2} kWh/rok × {3}/kWh × {5} = {4}\nS obstarávacou cenou spolu {6}. Cenu elektriny, počet rokov a hodiny denne zmeníte v nastaveniach rozšírenia.",
       sortTabEnergy: "S prevádzkou",
       sortStartEnergy: "Zoradiť podľa ceny vrátane prevádzky",
       sortStartHintEnergy: "Načíta všetky produkty výpisu a zoradí ich podľa obstarávacej ceny a elektriny za zvolený počet rokov spolu – od najlacnejšieho celkovo.",
-      sortTabActiveHintEnergy: "Price Insight: zoradené podľa ceny vrátane prevádzky. Kliknutím znova zoradenie zrušíte.",
+      sortTabActiveHintEnergy: "AllyZap: zoradené podľa ceny vrátane prevádzky. Kliknutím znova zoradenie zrušíte.",
       sortDoneEnergy: "Zoradených {0} produktov podľa ceny vrátane prevádzky",
+      sortNoEnergy: "bez údaja o spotrebe: {0}",
       sortStart: "Zoradiť podľa skutočnej ceny za jednotku",
       sortStartHint: "Načíta všetky produkty výpisu a zoradí ich podľa najnižšej ceny za jednotku – aj s AlzaPlus+ a zľavovými kódmi. Zoradenie Alzy „Najlacnejšie za jednotku“ ich nezapočítava.",
       sortCancel: "Zrušiť zoradenie",
@@ -115,7 +129,7 @@ const AlzaUnitPrice = {
       sortPartialUnknown: "Zoradených prvých {0} produktov, výpis pokračuje",
       sortLoadFailedUnknown: "Ďalšie produkty sa nepodarilo načítať – zoradených prvých {0}",
       sortTab: "Za jednotku",
-      sortTabActiveHint: "Price Insight: zoradené podľa skutočnej ceny za jednotku (aj s AlzaPlus+ a zľavovými kódmi). Kliknutím znova zoradenie zrušíte.",
+      sortTabActiveHint: "AllyZap: zoradené podľa skutočnej ceny za jednotku (aj s AlzaPlus+ a zľavovými kódmi). Kliknutím znova zoradenie zrušíte.",
       discountLabel: "Zľava",
       discountAll: "všetko",
       discountMin: "aspoň {0} %",
@@ -128,22 +142,31 @@ const AlzaUnitPrice = {
       filterPartial: "Vyhovuje {0} z {1} načítaných (výpis má {2})",
       filterPartialUnknown: "Vyhovuje {0} z {1} načítaných (výpis pokračuje)",
       filterNarrow: "Na výber zo všetkých zúžte výpis filtrami Alzy (do 500 produktov).",
+      energyFetchText: "Televízory a monitory majú spotrebu len na stránke produktu – bez ceny prevádzky: {0}",
+      energyFetchButton: "Spočítať prevádzku ({0})",
+      energyFetchLoading: "Načítavam spotrebu {0} / {1}…",
+      energyFetchDone: "Spotreba načítaná ({0})",
+      energyFetchFailed: "Načítanie prerušené – Alza odmietla ďalšie dotazy (načítané {0})",
+      energyFetchWait: "Skúste to znova o pár minút.",
+      energyFetchErrors: "Načítanie prerušené – stránky produktov sa nepodarilo načítať (načítané {0})",
     },
     hu: {
       withAlzaPlus: "AlzaPlus+-szal",
       withCode: "kuponkóddal",
       unitPriceHint: "Az Alza az egységárat az AlzaPlus+ és kuponkódok nélküli árból számolja.\n{0} / {1} = {2}",
-      parameterHint: "Price Insight: a legalacsonyabb fizetendő árból számolva (AlzaPlus+-szal és kuponkóddal együtt).\n{0} / {1} = {2}",
+      parameterHint: "AllyZap: a legalacsonyabb fizetendő árból számolva (AlzaPlus+-szal és kuponkóddal együtt).\n{0} / {1} = {2}",
       energyLabelOne: "üzemeltetés 1 évre: {1}",
       energyLabelFew: "üzemeltetés {0} évre: {1}",
       energyLabelMany: "üzemeltetés {0} évre: {1}",
-      energyHintYear: "Price Insight: az áram becsült költsége (évek száma: {4}).\n{0} kWh/év × {1}/kWh × {4} = {2}\nA vételárral együtt összesen {3}. Az áram árát és az évek számát a bővítmény beállításaiban módosíthatja.",
-      energyHintCycles: "Price Insight: az áram becsült költsége (évek száma: {5}).\n{0} kWh/100 ciklus × heti {1}× = {2} kWh/év × {3}/kWh × {5} = {4}\nA vételárral együtt összesen {6}. Az áram árát, az évek és a heti mosások számát a bővítmény beállításaiban módosíthatja.",
+      energyHintYear: "AllyZap: az áram becsült költsége (évek száma: {4}).\n{0} kWh/év × {1}/kWh × {4} = {2}\nA vételárral együtt összesen {3}. Az áram árát és az évek számát a bővítmény beállításaiban módosíthatja.",
+      energyHintCycles: "AllyZap: az áram becsült költsége (évek száma: {5}).\n{0} kWh/100 ciklus × heti {1}× = {2} kWh/év × {3}/kWh × {5} = {4}\nA vételárral együtt összesen {6}. Az áram árát, az évek és a heti mosások számát a bővítmény beállításaiban módosíthatja.",
+      energyHintHours: "AllyZap: becsült áramköltség (évek száma: {5}).\n{0} kWh/1000 óra × napi {1} óra = {2} kWh/év × {3}/kWh × {5} = {4}\nA vételárral együtt {6}. Az áramárat, az évek számát és a napi órákat a bővítmény beállításaiban módosíthatja.",
       sortTabEnergy: "Üzemeltetéssel",
       sortStartEnergy: "Rendezés üzemeltetéssel együtt számolt ár szerint",
       sortStartHintEnergy: "Betölti a lista összes termékét, és a vételár plusz a választott évekre számolt áramköltség szerint rendezi – a legolcsóbb összköltségtől.",
-      sortTabActiveHintEnergy: "Price Insight: üzemeltetéssel együtt számolt ár szerint rendezve. Újra kattintva a rendezés megszűnik.",
+      sortTabActiveHintEnergy: "AllyZap: üzemeltetéssel együtt számolt ár szerint rendezve. Újra kattintva a rendezés megszűnik.",
       sortDoneEnergy: "{0} termék rendezve üzemeltetéssel együtt számolt ár szerint",
+      sortNoEnergy: "fogyasztási adat nélkül: {0}",
       sortStart: "Rendezés valós egységár szerint",
       sortStartHint: "Betölti a lista összes termékét, és a legalacsonyabb egységár szerint rendezi – AlzaPlus+-szal és kuponkódokkal együtt. Az Alza „Legolcsóbb egységár” rendezése ezeket nem veszi figyelembe.",
       sortCancel: "Rendezés törlése",
@@ -156,7 +179,7 @@ const AlzaUnitPrice = {
       sortPartialUnknown: "Az első {0} termék rendezve, a lista folytatódik",
       sortLoadFailedUnknown: "A további termékeket nem sikerült betölteni – az első {0} rendezve",
       sortTab: "Egységár",
-      sortTabActiveHint: "Price Insight: valós egységár szerint rendezve (AlzaPlus+-szal és kuponkódokkal együtt). Újra kattintva a rendezés megszűnik.",
+      sortTabActiveHint: "AllyZap: valós egységár szerint rendezve (AlzaPlus+-szal és kuponkódokkal együtt). Újra kattintva a rendezés megszűnik.",
       discountLabel: "Kedvezmény",
       discountAll: "mind",
       discountMin: "legalább {0} %",
@@ -169,22 +192,31 @@ const AlzaUnitPrice = {
       filterPartial: "{0} / {1} betöltött megfelel (a lista {2} tételes)",
       filterPartialUnknown: "{0} / {1} betöltött megfelel (a lista folytatódik)",
       filterNarrow: "A teljes lista szűréséhez szűkítse az Alza szűrőivel (legfeljebb 500 termékre).",
+      energyFetchText: "A tévék és monitorok fogyasztása csak a termékoldalon szerepel – üzemeltetési költség nélkül: {0}",
+      energyFetchButton: "Üzemeltetés kiszámítása ({0})",
+      energyFetchLoading: "Fogyasztás betöltése {0} / {1}…",
+      energyFetchDone: "Fogyasztás betöltve ({0})",
+      energyFetchFailed: "A betöltés megszakadt – az Alza elutasította a további kéréseket (betöltve {0})",
+      energyFetchWait: "Próbálja újra néhány perc múlva.",
+      energyFetchErrors: "A betöltés megszakadt – a termékoldalakat nem sikerült betölteni (betöltve {0})",
     },
     en: {
       withAlzaPlus: "with AlzaPlus+",
       withCode: "with a discount code",
       unitPriceHint: "Alza calculates the unit price from the price without AlzaPlus+ and discount codes.\n{0} / {1} = {2}",
-      parameterHint: "Price Insight: calculated from the lowest price you pay (including AlzaPlus+ and discount codes).\n{0} / {1} = {2}",
+      parameterHint: "AllyZap: calculated from the lowest price you pay (including AlzaPlus+ and discount codes).\n{0} / {1} = {2}",
       energyLabelOne: "running cost, 1 year: {1}",
       energyLabelFew: "running cost, {0} years: {1}",
       energyLabelMany: "running cost, {0} years: {1}",
-      energyHintYear: "Price Insight: estimated electricity cost (number of years: {4}).\n{0} kWh/year × {1}/kWh × {4} = {2}\nWith the purchase price {3} in total. Change the electricity price and the number of years in the extension settings.",
-      energyHintCycles: "Price Insight: estimated electricity cost (number of years: {5}).\n{0} kWh/100 cycles × {1}× a week = {2} kWh/year × {3}/kWh × {5} = {4}\nWith the purchase price {6} in total. Change the electricity price, the number of years and washes per week in the extension settings.",
+      energyHintYear: "AllyZap: estimated electricity cost (number of years: {4}).\n{0} kWh/year × {1}/kWh × {4} = {2}\nWith the purchase price {3} in total. Change the electricity price and the number of years in the extension settings.",
+      energyHintCycles: "AllyZap: estimated electricity cost (number of years: {5}).\n{0} kWh/100 cycles × {1}× a week = {2} kWh/year × {3}/kWh × {5} = {4}\nWith the purchase price {6} in total. Change the electricity price, the number of years and washes per week in the extension settings.",
+      energyHintHours: "AllyZap: estimated electricity cost ({5} years).\n{0} kWh/1000 h × {1} h a day = {2} kWh/year × {3}/kWh × {5} = {4}\nTogether with the purchase price {6}. Change the electricity price, years and hours a day in the extension settings.",
       sortTabEnergy: "With running cost",
       sortStartEnergy: "Sort by price including running cost",
       sortStartHintEnergy: "Loads all products of the listing and sorts them by the purchase price plus electricity for the chosen number of years – cheapest in total first.",
-      sortTabActiveHintEnergy: "Price Insight: sorted by price including running cost. Click again to cancel the sorting.",
+      sortTabActiveHintEnergy: "AllyZap: sorted by price including running cost. Click again to cancel the sorting.",
       sortDoneEnergy: "{0} products sorted by price including running cost",
+      sortNoEnergy: "without consumption data: {0}",
       sortStart: "Sort by real unit price",
       sortStartHint: "Loads all products of the listing and sorts them by the lowest unit price – including AlzaPlus+ and discount codes. Alza's own unit price sorting ignores them.",
       sortCancel: "Cancel sorting",
@@ -197,7 +229,7 @@ const AlzaUnitPrice = {
       sortPartialUnknown: "First {0} products sorted, the listing continues",
       sortLoadFailedUnknown: "Couldn't load more products – first {0} sorted",
       sortTab: "Unit price",
-      sortTabActiveHint: "Price Insight: sorted by the real unit price (including AlzaPlus+ and discount codes). Click again to cancel the sorting.",
+      sortTabActiveHint: "AllyZap: sorted by the real unit price (including AlzaPlus+ and discount codes). Click again to cancel the sorting.",
       discountLabel: "Discount",
       discountAll: "all",
       discountMin: "at least {0} %",
@@ -210,6 +242,13 @@ const AlzaUnitPrice = {
       filterPartial: "{0} of {1} loaded match (the listing has {2})",
       filterPartialUnknown: "{0} of {1} loaded match (the listing continues)",
       filterNarrow: "To filter all of them, narrow the listing with Alza's filters (to 500 products).",
+      energyFetchText: "TVs and monitors list their consumption only on the product page – without running cost: {0}",
+      energyFetchButton: "Calculate running cost ({0})",
+      energyFetchLoading: "Loading consumption {0} / {1}…",
+      energyFetchDone: "Consumption loaded ({0})",
+      energyFetchFailed: "Loading stopped – Alza refused more requests (loaded {0})",
+      energyFetchWait: "Try again in a few minutes.",
+      energyFetchErrors: "Loading stopped – the product pages couldn't be loaded (loaded {0})",
     },
   },
 
@@ -221,6 +260,12 @@ const AlzaUnitPrice = {
     parameters: new WeakMap(), // Box produktu → { text, parameter, energy } – hlavní parametr / spotřeba z názvu a popisku (updateParameterItem)
     // Cena provozu (volba energyCost): cena elektřiny za kWh v měně domény, počet let a cyklů týdně z nastavení
     energy: { enabled: false, price: 0, years: 10, cyclesPerWeek: 4 },
+    energyCache: {}, // Spotřeba ze stránek produktů (storageKeys.energy) – televize a monitory
+    // „Spočítat provoz“: failed = false | "refused" (Alza odmítla – 403 / 429) | "errors" (stránky nejdou načíst);
+    // anchor = první box výpisu, pro který běh proběhl (po výměně výpisu Alzou se stav zahodí); pausedUntil = čas,
+    // do kterého je tlačítko po odmítnutí vypnuté
+    energyFetch: { loading: false, done: 0, total: 0, failed: false, anchor: null, pausedUntil: 0, bar: null },
+    energyCandidates: new WeakMap(), // Box produktu → { href, text, candidate, url } – výpočet z názvu a popisku jednou (getEnergyCandidates)
     load: { loading: false, failed: false, autoAnchor: null }, // Načítání celého výpisu (řazení i filtr)
     sort: { active: false, anchor: null }, // anchor = box z řazeného výpisu
     filter: { min: 0, coupon: false, bulk: false }, // Filtr slev: aspoň min %, jen s kupónem, jen s množstevní slevou
@@ -243,7 +288,9 @@ const AlzaUnitPrice = {
     // Jen stránky s výpisem produktů (kategorie, vyhledávání); jinde nic nesledovat
     if (!document.querySelector(this.selectors.item)) return;
     // Lišta předchozí verze skriptu (Firefox ho po aktualizaci rozšíření vloží znovu) – mrtvá, pryč
-    document.querySelectorAll(".alza-price-tracker-unit-toolbar, .alza-price-tracker-sort-tab, .alza-price-tracker-filter-block").forEach((element) => element.remove());
+    document
+      .querySelectorAll(".alza-price-tracker-unit-toolbar, .alza-price-tracker-sort-tab, .alza-price-tracker-filter-block, .alza-price-tracker-energy-bar")
+      .forEach((element) => element.remove());
     // S lištou musí pryč i to, co stará instance nechala na prvcích Alzy: řazení (CSS order na dlaždicích), produkty
     // skryté filtrem slev a zhasnutá záložka řazení Alzy – jinak zůstane výpis seřazený po našem a nejde to zrušit.
     // Úklid čte jen DOM, na stavu nové instance nezávisí
@@ -267,9 +314,16 @@ const AlzaUnitPrice = {
       this.state.unitPriceOn = Boolean(settings.categoryUnitPrice);
       this.setFeatures(settings.categoryUnitPrice || settings.energyCost, settings.categoryDiscountFilter);
     };
+    const energyKey = AlzaCore.storageKeys.energy;
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === "local" && changes[key]) apply({ ...AlzaCore.defaultSettings, ...changes[key].newValue });
+      if (area === "local" && changes[energyKey]) {
+        this.state.energyCache = changes[energyKey].newValue || {};
+        this.scheduleUpdate();
+      }
+      if (area === "local") this.applyHistoryChanges(changes);
     });
+    this.state.energyCache = (await chrome.storage.local.get(energyKey))[energyKey] || {};
     apply(await AlzaCore.getSettings());
   },
 
@@ -337,7 +391,7 @@ const AlzaUnitPrice = {
           try {
             this.updateItem(item);
           } catch (error) {
-            console.error("Alza Price Tracker – cena za jednotku:", error);
+            console.error("AllyZap – cena za jednotku:", error);
           }
         });
       }
@@ -352,13 +406,14 @@ const AlzaUnitPrice = {
       if (sort.active) this.applySort();
       this.applyFilter();
       this.updateToolbar();
+      this.updateEnergyFetchBar();
       // Alza výpis vyměnila (zúžení jejími filtry) a nový je malý – filtr slev ho načte celý. Jen z první stránky:
       // listování stránkami Alzy nesmí uživatele vracet na začátek
       autoLoad = this.isFilterActive() && !load.loading && this.getListItems()[0] !== load.autoAnchor && this.getFirstLoadedPage() <= 1;
     } finally {
       this.state.pass = null; // Načítání dalších stránek (autoLoadForFilter) už čte živý DOM
     }
-    if (autoLoad) this.autoLoadForFilter().catch((error) => console.error("Alza Price Tracker – načtení výpisu pro filtr:", error));
+    if (autoLoad) this.autoLoadForFilter().catch((error) => console.error("AllyZap – načtení výpisu pro filtr:", error));
   },
 
   // Ceny dlaždice: { quantity: množstevní sleva (cena „od …“ není cena jednoho kusu), prices: ceny boxu | null }.
@@ -413,8 +468,10 @@ const AlzaUnitPrice = {
       this.state.parameters.set(item, known);
     }
     const parameter = this.state.unitPriceOn ? known.parameter : null;
-    // Cena provozu (lednice, pračky, sušičky) – spotřeba z popisku × cena elektřiny × roky z nastavení
-    const energy = this.state.energy.enabled ? known.energy : null;
+    // Cena provozu (lednice, pračky, sušičky) – spotřeba z popisku × cena elektřiny × roky z nastavení; televize
+    // a monitory ze stránky produktu (mezipaměť – detail produktu nebo „Spočítat provoz“)
+    const cached = !known.parameter && !known.energy ? AlzaCore.getCachedEnergy(this.state.energyCache, this.getItemProductKey(item)) : null;
+    const energy = this.state.energy.enabled ? known.energy || (cached?.kwh ? cached : null) : null;
     const current = item.querySelector(`.${this.parameterClass}`);
     if (!parameter && !energy) {
       current?.remove();
@@ -461,7 +518,9 @@ const AlzaUnitPrice = {
     label.title =
       energy.per === "year"
         ? this.translate("energyHintYear", number(energy.kwh, 1), perKwh, money(cost), money(price + cost), years)
-        : this.translate("energyHintCycles", number(energy.kwh, 1), cyclesPerWeek, number(yearlyKwh), perKwh, money(cost), years, money(price + cost));
+        : energy.per === "hours"
+          ? this.translate("energyHintHours", number(energy.kwh, 1), number(this.state.energy.hoursPerDay, 1), number(yearlyKwh), perKwh, money(cost), years, money(price + cost))
+          : this.translate("energyHintCycles", number(energy.kwh, 1), cyclesPerWeek, number(yearlyKwh), perKwh, money(cost), years, money(price + cost));
     element.appendChild(label);
     return element;
   },
@@ -648,7 +707,7 @@ const AlzaUnitPrice = {
     try {
       load.failed = (await this.loadAllItems()) === false; // "limit" = načtená dávka velkého výpisu, ne chyba
     } catch (error) {
-      console.error("Alza Price Tracker – načtení výpisu:", error);
+      console.error("AllyZap – načtení výpisu:", error);
       load.failed = true;
     }
     load.loading = false;
@@ -740,13 +799,37 @@ const AlzaUnitPrice = {
     return key;
   },
 
+  // Historie zapsaná za běhu stránky (prohlížení výpisu, detail, kontrola na pozadí) – načtené produkty
+  // dostanou novou obvyklou cenu hned, ne až po obnovení stránky
+  applyHistoryChanges(changes) {
+    const prefix = AlzaCore.storagePrefixes.history;
+    const lang = this.state.domainKey ? AlzaCore.domains[this.state.domainKey]?.lang : null;
+    let changed = false;
+    for (const [storageKey, change] of Object.entries(changes)) {
+      if (!storageKey.startsWith(prefix)) continue;
+      const key = storageKey.slice(prefix.length);
+      if (!this.state.histories.has(key) || !lang) continue;
+      const raw = change.newValue;
+      this.state.histories.set(key, raw ? AlzaCore.getPriceChangeHistory(AlzaCore.normalizeHistory(raw, lang)) : null);
+      changed = true;
+    }
+    if (changed) this.scheduleUpdate();
+  },
+
   // Historie produktů výpisu pro obvyklou cenu – jedním čtením, jen ty, které ještě nejsou načtené
   async loadHistories(keys) {
     const missing = keys.filter((key) => key && !this.state.histories.has(key));
     if (missing.length === 0) return;
     missing.forEach((key) => this.state.histories.set(key, null));
     const prefix = AlzaCore.storagePrefixes.history;
-    const data = await chrome.storage.local.get(missing.map((key) => `${prefix}${key}`));
+    let data;
+    try {
+      data = await chrome.storage.local.get(missing.map((key) => `${prefix}${key}`));
+    } catch (error) {
+      // Čtení selhalo – příští průchod to zkusí znovu (null by jinak znamenal „historie není“ natrvalo)
+      missing.forEach((key) => this.state.histories.delete(key));
+      throw error;
+    }
     const lang = AlzaCore.domains[this.state.domainKey].lang;
     missing.forEach((key) => {
       const raw = data[`${prefix}${key}`];
@@ -780,17 +863,23 @@ const AlzaUnitPrice = {
     const { min, coupon, bulk } = this.state.filter;
     const items = this.getListItems();
     const keys = items.map((item) => this.getItemProductKey(item));
-    this.loadHistories(keys).catch((error) => console.error("Alza Price Tracker – historie pro filtr slev:", error));
+    this.loadHistories(keys).catch((error) => console.error("AllyZap – historie pro filtr slev:", error));
     let shown = 0;
+    let total = 0;
     items.forEach((item, index) => {
       const { discount, quantity } = this.getItemDiscount(item, keys[index]);
       // Jen „S množstevní slevou“ slevu nevyžaduje; sleva a kupón ano
       const discountOk = (min === 0 && !coupon) || (Boolean(discount) && discount.percent >= min && (!coupon || discount.coupon));
       const matches = discountOk && (!bulk || quantity);
-      if (matches) shown++;
+      // Produkt skrytý uživatelem se do „Vyhovuje X z Y“ nepočítá – atribut filtru ale dostane taky, ať ho
+      // „Zobrazit skryté“ neukáže, když filtru nevyhovuje
+      if (!item.hasAttribute(this.memoryHiddenAttribute)) {
+        total++;
+        if (matches) shown++;
+      }
       if (item.hasAttribute(this.filteredAttribute) === matches) item.toggleAttribute(this.filteredAttribute, !matches);
     });
-    this.state.filterCounts = { shown, total: items.length };
+    this.state.filterCounts = { shown, total };
   },
 
   clearSortOrder() {
@@ -886,7 +975,7 @@ const AlzaUnitPrice = {
   },
 
   // Ovládání na místech Alzy: řazení jako další záložka řazení, filtry slev, stav a „Načíst zbývající“ jako blok
-  // „Price Insight“ na začátku levého panelu filtrů. Bez záložek nebo panelu (jiný typ výpisu) zůstane lišta.
+  // „AllyZap“ na začátku levého panelu filtrů. Bez záložek nebo panelu (jiný typ výpisu) zůstane lišta.
   // true = umístěno do Alzy
   mountInAlza(sorting, unitAvailable) {
     const wrapper = sorting.querySelector(".sorting__wrapper");
@@ -938,7 +1027,7 @@ const AlzaUnitPrice = {
     return true;
   },
 
-  // Blok „Price Insight“ v levém panelu má co ukázat: filtr slev (volba zapnutá), nebo stav našeho řazení a načítání
+  // Blok „AllyZap“ v levém panelu má co ukázat: filtr slev (volba zapnutá), nebo stav našeho řazení a načítání
   // („Načítám produkty…“, „Seřazeno 504 z 3000“, „Načíst dalších N“) – ten musí být vidět i s vypnutým filtrem slev
   isFilterBlockVisible() {
     const { discountEnabled, sort, load } = this.state;
@@ -952,15 +1041,20 @@ const AlzaUnitPrice = {
   },
 
   // Stav v liště jako [[klíč textu, …parametry]]. Bez známého počtu položek (total = null) a s pokračováním výpisu
-  // texty neříkají „Seřazeno N produktů“ / „Vyhovuje 2 z 24“, ale že jde jen o načtenou část
-  getStatusParts({ loading, failed, active, filterActive, counts, loaded, total, hasMore, small, energyListing }) {
+  // texty neříkají „Seřazeno N produktů“ / „Vyhovuje 2 z 24“, ale že jde jen o načtenou část.
+  // hidden = kolik z načtených skryl uživatel (paměť prohlížení) – do „Seřazeno N“ se nepočítají (úplnost výpisu
+  // se dál posuzuje podle všech načtených); noEnergy = kolik seřazených nemá údaj o spotřebě (řazení „S provozem“
+  // je řadí na konec, bez upozornění by vypadaly jako nejdražší)
+  getStatusParts({ loading, failed, active, filterActive, counts, loaded, total, hasMore, small, energyListing, hidden = 0, noEnergy = 0 }) {
     const known = total !== null;
     if (loading) return [known ? ["sortLoading", loaded, total] : ["sortLoadingUnknown", loaded]];
     const complete = this.isListingComplete(loaded, total, hasMore);
+    const sorted = Math.max(0, loaded - hidden);
     const parts = [];
-    if (active && failed) parts.push(known ? ["sortLoadFailed", loaded, total] : ["sortLoadFailedUnknown", loaded]);
-    else if (active && complete) parts.push([energyListing ? "sortDoneEnergy" : "sortDone", loaded]);
-    else if (active) parts.push(known ? ["sortPartial", loaded, total] : ["sortPartialUnknown", loaded]);
+    if (active && failed) parts.push(known ? ["sortLoadFailed", sorted, total] : ["sortLoadFailedUnknown", sorted]);
+    else if (active && complete) parts.push([energyListing ? "sortDoneEnergy" : "sortDone", sorted]);
+    else if (active) parts.push(known ? ["sortPartial", sorted, total] : ["sortPartialUnknown", sorted]);
+    if (active && energyListing && noEnergy > 0) parts.push(["sortNoEnergy", noEnergy]);
     if (filterActive && counts) {
       if (complete) parts.push(["filterStatus", counts.shown, counts.total]);
       else parts.push(known ? ["filterPartial", counts.shown, counts.total, total] : ["filterPartialUnknown", counts.shown, counts.total]);
@@ -1010,17 +1104,23 @@ const AlzaUnitPrice = {
     button.classList.toggle("alza-price-tracker-hidden", !unitAvailable);
     discount.classList.toggle("alza-price-tracker-hidden", !this.state.discountEnabled);
 
+    const items = this.getListItems();
+    // Stav řazení mluví jen o produktech, které uživatel neskryl
+    const sorted = active ? items.filter((item) => !item.hasAttribute(this.memoryHiddenAttribute)) : items;
     const parts = this.getStatusParts({
       loading,
       failed,
       active,
       filterActive,
       counts: this.state.filterCounts,
-      loaded: this.getListItems().length,
+      loaded: items.length,
       total: this.getTotalCount(),
       hasMore,
       small: this.isSmallListing(),
       energyListing,
+      hidden: items.length - sorted.length,
+      // Bez klíče řazení = bez ceny včetně provozu (spotřeba není v popisku ani v mezipaměti)
+      noEnergy: active && energyListing ? sorted.filter((item) => !this.state.rendered.get(item)?.sortKey).length : 0,
     }).map(([key, ...params]) => this.translate(key, ...params));
 
     // V záložkách Alzy název jako jejich záložky (opětovný klik řazení zruší), v liště tlačítko Seřadit / Zrušit
@@ -1063,6 +1163,142 @@ const AlzaUnitPrice = {
     more.classList.toggle("alza-price-tracker-hidden", !(active || filterActive) || loading || !hasMore);
   },
 
+  // Televize a monitory ve výpisu, u kterých spotřebu neznáme (dlaždice ji nemá, mezipaměť taky ne): [{ item, key, url }].
+  // Bez produktů, které uživatel skryl. Rozbor názvu a popisku (regulární výrazy, new URL) se pro dlaždici dělá
+  // jednou – znovu až když jí Alza změní odkaz nebo text; průchod běží při každé dávce změn DOM
+  getEnergyCandidates() {
+    const cache = this.state.energyCandidates;
+    return this.getListItems()
+      .map((item) => {
+        if (item.hasAttribute(this.memoryHiddenAttribute)) return null;
+        const link = item.querySelector(this.selectors.name);
+        const href = link?.getAttribute("href");
+        if (!href) return null;
+        const text = `${link.textContent}\n${item.querySelector(this.selectors.description)?.textContent || ""}`;
+        let known = cache.get(item);
+        if (known?.href !== href || known.text !== text) {
+          const name = this.getText(item, this.selectors.name);
+          const description = this.getText(item, this.selectors.description);
+          const candidate = AlzaCore.isEnergyCandidate(name, description) && !AlzaCore.getListingEnergy(description) && !AlzaCore.getListingParameter(name, description);
+          known = { href, text, candidate, url: candidate ? new URL(href, window.location.origin).href : null };
+          cache.set(item, known);
+        }
+        if (!known.candidate) return null;
+        const key = this.getItemProductKey(item);
+        if (!key || AlzaCore.getCachedEnergy(this.state.energyCache, key)) return null;
+        return { item, key, url: known.url };
+      })
+      .filter(Boolean);
+  },
+
+  energyFetchMax: 48, // Stránek produktů na jedno kliknutí
+  energyFetchDelayMs: 400, // Rozestup před každým dalším požadavkem (i po chybě) – Alza nedostane dávku najednou
+  energyFetchMaxErrors: 3, // Tolik nepovedených stránek za sebou (chyba serveru, sítě, není detail produktu) běh ukončí
+  energyFetchPauseMs: 5 * 60 * 1000, // Po odmítnutí Alzou (403 / 429) je tlačítko tak dlouho vypnuté
+
+  // Nad výpisem: „Televize a monitory mají spotřebu jen na stránce produktu“ + Spočítat provoz (s volbou energyCost)
+  updateEnergyFetchBar() {
+    const job = this.state.energyFetch;
+    const container = document.querySelector(this.selectors.container);
+    // Alza výpis vyměnila (filtr, jiná kategorie) – výsledek minulého běhu k novému výpisu nepatří
+    if (!job.loading && job.anchor?.isConnected === false) Object.assign(job, { done: 0, total: 0, failed: false, anchor: null });
+    const candidates = this.state.energy.enabled && container ? this.getEnergyCandidates() : [];
+    const hasResult = this.state.energy.enabled && (job.done > 0 || Boolean(job.failed));
+    // Bez výpisu (#boxes) není lištu kam dát; bez kandidátů a bez výsledku běhu není co říct
+    if (!container || !(job.loading || candidates.length > 0 || hasResult)) {
+      job.bar?.remove();
+      job.bar = null;
+      return;
+    }
+    if (!job.bar) {
+      const bar = document.createElement("div");
+      bar.className = "alza-price-tracker-listing-bar alza-price-tracker-energy-bar";
+      const text = document.createElement("span");
+      text.className = "alza-price-tracker-energy-bar-text";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "alza-price-tracker-memory-action";
+      button.addEventListener("click", () => this.fetchEnergy().catch((error) => console.error("AllyZap – spotřeba televizí:", error)));
+      bar.append(AlzaCore.createToolbarLogo(document), text, button);
+      job.bar = bar;
+    }
+    const [, text, button] = job.bar.children;
+    const paused = Date.now() < job.pausedUntil;
+    const message = job.loading
+      ? this.translate("energyFetchLoading", job.done, job.total)
+      : job.failed === "refused" || paused // Pauza platí i pro další výpis (po výměně výpisu Alzou)
+        ? [this.translate("energyFetchFailed", job.done), paused ? this.translate("energyFetchWait") : ""].filter(Boolean).join(". ")
+        : job.failed
+          ? this.translate("energyFetchErrors", job.done)
+          : candidates.length > 0
+            ? this.translate("energyFetchText", candidates.length)
+            : this.translate("energyFetchDone", job.done);
+    this.setText(text, message, "bolt");
+    this.setText(button, this.translate("energyFetchButton", Math.min(candidates.length, this.energyFetchMax)));
+    button.classList.toggle("alza-price-tracker-hidden", job.loading || paused || candidates.length === 0);
+    const next = job.bar.nextElementSibling;
+    if (job.bar.parentElement !== container.parentElement || !(next === container || next?.classList.contains("alza-price-tracker-listing-bar"))) container.before(job.bar);
+  },
+
+  // Stránky produktů (služba na pozadí, po jedné) → spotřeba do mezipaměti. Před každým požadavkem kromě prvního
+  // rozestup; po odmítnutí Alzou (403 / 429) konec a tlačítko na pár minut vypnuté; po třech nepovedených stránkách
+  // za sebou konec. „Bez údaje“ se ukládá jen u stránky, která je opravdu detail produktu – ověření nebo přihlášení
+  // s HTTP 200 by jinak produkt na 60 dní vyřadilo.
+  // Stránky produktů se neotevírají jedním „acquire“ na celý běh: služba na pozadí ho nabízí jen svému kódu
+  // (acquireProductPages), zprávou fetchProductPage ho content script podržet neumí – v Chromu se tak offscreen
+  // dokument otevře a zavře s každým požadavkem
+  async fetchEnergy() {
+    const job = this.state.energyFetch;
+    if (job.loading || Date.now() < job.pausedUntil) return;
+    const candidates = this.getEnergyCandidates().slice(0, this.energyFetchMax);
+    if (candidates.length === 0) return;
+    Object.assign(job, { loading: true, done: 0, total: candidates.length, failed: false, anchor: this.getListItems()[0] || null });
+    this.updateEnergyFetchBar();
+    const storageKey = AlzaCore.storageKeys.energy;
+    let requests = 0;
+    let errors = 0;
+    try {
+      for (const { key, url } of candidates) {
+        // Vypnuto v nastavení nebo Alza výpis vyměnila – pro výpis, který už není vidět, se nestahuje
+        if (!this.state.enabled || !this.state.energy.enabled || job.anchor?.isConnected === false) break;
+        // Mezipaměť znovu z úložiště: spotřebu mohla mezitím uložit jiná záložka (stejný výpis, detail produktu)
+        const { [storageKey]: stored } = await chrome.storage.local.get(storageKey);
+        const cache = stored && typeof stored === "object" ? stored : {};
+        if (AlzaCore.getCachedEnergy(cache, key)) {
+          job.done++;
+          this.updateEnergyFetchBar();
+          continue;
+        }
+        if (requests++ > 0) await new Promise((resolve) => setTimeout(resolve, this.energyFetchDelayMs));
+        const result = await chrome.runtime.sendMessage({ action: "fetchProductPage", url }).catch(() => null);
+        if ([403, 429].includes(result?.status)) {
+          job.failed = "refused";
+          job.pausedUntil = Date.now() + this.energyFetchPauseMs;
+          setTimeout(() => this.scheduleUpdate(), this.energyFetchPauseMs + 500); // Tlačítko zpět
+          break;
+        }
+        if (!result?.ok || !result.isProduct) {
+          if (++errors >= this.energyFetchMaxErrors) {
+            job.failed = "errors";
+            break;
+          }
+          continue;
+        }
+        errors = 0;
+        const now = Date.now();
+        const entry = result.energy ? { kwh: result.energy.kwh, per: result.energy.per, at: now } : { none: true, at: now };
+        // Zápis po každé stránce (druhá záložka ho uvidí hned) a s ním pryč prošlé záznamy – mapa jinak jen roste
+        const remove = AlzaCore.getExpiredEnergyKeys(cache, now).filter((expired) => expired !== key);
+        await AlzaStore.run({ type: "patchMap", key: storageKey, set: { [key]: entry }, remove });
+        job.done++;
+        this.updateEnergyFetchBar();
+      }
+    } finally {
+      job.loading = false;
+      this.updateEnergyFetchBar();
+    }
+  },
+
   // Text prvku lišty jen při změně (lišta se překresluje často); icon = ikona před textem – vloží se jen když chybí
   setText(element, text, icon) {
     if (element.textContent !== text) element.textContent = text;
@@ -1070,4 +1306,4 @@ const AlzaUnitPrice = {
   },
 };
 
-AlzaUnitPrice.init().catch((error) => console.error("Alza Price Tracker – cena za jednotku:", error));
+AlzaUnitPrice.init().catch((error) => console.error("AllyZap – cena za jednotku:", error));

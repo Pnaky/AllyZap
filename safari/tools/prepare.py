@@ -23,6 +23,7 @@ SKIP_DIRS = {"src/chrome", "src/firefox"}  # offscreen dokument / stránka na po
 PRODUCT_PAGES = {"src/chrome/product-pages.js", "src/firefox/product-pages.js"}
 SAFARI_PRODUCT_PAGES = "src/safari/product-pages.js"
 SAFARI_NOTIFICATIONS = "src/safari/notifications.js"
+UTF8_BOM = b"\xef\xbb\xbf"
 
 # (soubor, původní text, nový text) – původní text se musí v souboru najít právě jednou
 PATCHES = [
@@ -102,6 +103,16 @@ def apply_patches(out):
         path.write_text(text.replace(old, new), encoding="utf-8")
 
 
+def mark_utf8(out):
+    # Stránka na pozadí, kterou Safari generuje (_generated_background_page.html), nemá deklarované kódování
+    # a skripty v ní Safari nečte jako UTF-8: diakritika v kódu (klíč objektu bez uvozovek) je pak chyba
+    # syntaxe a celý soubor se zahodí, v textech by byla rozsypaná. Značka BOM určí UTF-8 vždy.
+    for path in out.rglob("*.js"):
+        data = path.read_bytes()
+        if not data.startswith(UTF8_BOM) and not data.isascii():
+            path.write_bytes(UTF8_BOM + data)
+
+
 def check_references(manifest, out):
     files = list(manifest["background"]["scripts"])
     for script in manifest.get("content_scripts", []):
@@ -120,6 +131,11 @@ def main():
     upstream, overlay, out = (Path(arg).resolve() for arg in sys.argv[1:])
     if not (upstream / "manifest.json").is_file():
         fail(f"{upstream} neobsahuje manifest.json")
+    # Výstup nesmí být zdrojákem ani je obsahovat – rmtree by je smazal, copytree by kopíroval sám do sebe
+    sources = [upstream / name for name in COPY] + [overlay / "src" / "safari"]
+    for source in [upstream, overlay] + sources:
+        if out == source or out in source.parents or (source in sources and source in out.parents):
+            fail(f"výstup {out} se překrývá se zdrojáky ({source})")
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -128,6 +144,7 @@ def main():
     shutil.copytree(overlay / "src" / "safari", out / "src" / "safari")
     manifest = make_manifest(upstream, out)
     apply_patches(out)
+    mark_utf8(out)
     check_references(manifest, out)
     print(f"Rozšíření pro Safari {manifest['version']} připraveno v {out}")
 

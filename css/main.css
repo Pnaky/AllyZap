@@ -327,7 +327,7 @@
   min-width: 0;
 }
 
-/* Nad názvem: logo + „Price Insight · Historie cen“ (logo – viz .alza-price-tracker-toolbar-logo::before) */
+/* Nad názvem: logo + „AllyZap · Historie cen“ (logo – viz .alza-price-tracker-toolbar-logo::before) */
 .alza-price-tracker-history-eyebrow {
   display: flex;
   align-items: center;
@@ -357,6 +357,17 @@
 }
 
 /* Zavřít – kulaté tlačítko s ikonou, při najetí šedé pozadí */
+/* Poslední kontrola – vedle křížku, svisle na jeho středu */
+.alza-price-tracker-history-checked {
+  align-self: flex-start;
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 13px;
+  line-height: 24px;
+  color: #6e6e6e;
+  white-space: nowrap;
+}
+
 .alza-price-tracker-history-close {
   align-self: flex-start;
   display: inline-flex !important;
@@ -639,16 +650,135 @@ select.alza-price-tracker-history-target-currency {
   color: #616161;
 }
 
-/* Odkaz na objednávku v poznámce „Koupili jste…“ (Moje věci) */
-.alza-price-tracker-product-order {
-  color: inherit;
-  text-decoration: underline;
+/* Výstrahy v jednom boxu (podezřelá sleva, přeškrtnutá cena, podezřelá cena): ikona, nadpis a odrážky */
+.alza-price-tracker-product-alert {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  column-gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #f6d3a8;
+  border-radius: 6px;
+  background: #fff7ee;
+  color: #8a4300;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
-.alza-price-tracker-product-note--warning {
-  font-weight: 600;
-  color: #e65100;
+.alza-price-tracker-product-alert > .alza-price-tracker-icon {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  color: #e07800;
+}
+
+.alza-price-tracker-product-alert-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #6b3400;
+}
+
+.alza-price-tracker-product-alert-list {
+  margin: 2px 0 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+.alza-price-tracker-product-alert-item {
+  position: relative;
+  margin: 0 !important;
+  padding: 0 0 0 12px !important;
+  background: none !important;
+  list-style: none !important;
+}
+
+.alza-price-tracker-product-alert-item::before {
+  content: "";
+  position: absolute;
+  top: 0.6em;
+  left: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+/* Jediná výstraha bez odrážky */
+.alza-price-tracker-product-alert-item:only-child {
+  padding-left: 0 !important;
+}
+
+.alza-price-tracker-product-alert-item:only-child::before {
+  display: none;
+}
+
+.alza-price-tracker-product-alert-item[title] {
   cursor: help;
+}
+
+/* Doplňující informace jako tichý seznam: ikona, text, odkaz vpravo, řádky oddělené linkou */
+.alza-price-tracker-product-facts {
+  margin-top: 12px;
+  border-top: 1px solid #eceff4;
+}
+
+.alza-price-tracker-product-note.alza-price-tracker-product-fact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid #eceff4;
+  color: #3d4451;
+}
+
+.alza-price-tracker-product-fact > .alza-price-tracker-icon {
+  width: 18px;
+  height: 18px;
+  margin-right: 0;
+}
+
+.alza-price-tracker-product-fact-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* „Objednávka ›“, „Zobrazit ›“ – odkaz nebo tlačítko jako odkaz */
+.alza-price-tracker-product-fact-link {
+  display: inline-flex !important;
+  flex: none;
+  align-items: center;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 0 0 auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: none !important;
+  color: #164194 !important;
+  font: inherit !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.alza-price-tracker-product-fact-link:hover {
+  text-decoration: underline !important;
+}
+
+.alza-price-tracker-product-fact-link > .alza-price-tracker-icon {
+  width: 16px;
+  height: 16px;
+  margin: 0 0 0 2px;
+}
+
+/* Vaše poznámka v seznamu – zvýrazněná */
+.alza-price-tracker-product-note.alza-price-tracker-product-fact.alza-price-tracker-product-note--user {
+  margin: 6px 0;
+  padding: 8px;
+  border-bottom: 0;
+  color: #6b4e00;
 }
 
 .alza-price-tracker-product-note--reached {
@@ -664,8 +794,16 @@ select.alza-price-tracker-history-target-currency {
 .alza-price-tracker-product-foot {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-top: 12px;
+}
+
+/* Poznámka, Recenze naruby, Kopírovat nabídku – jen ikony vpravo (popisek v bublině) */
+.alza-price-tracker-product-tools {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .alza-price-tracker-product--floating {
@@ -701,10 +839,26 @@ select.alza-price-tracker-history-target-currency {
   border-color: #0094e7 !important;
 }
 
+/* Otevřená poznámka / Recenze naruby – tlačítko zvýrazněné, dalším kliknutím se zavře */
+.alza-price-tracker-product-button[aria-expanded="true"] {
+  border-color: #0094e7 !important;
+  background: #e6f4fd !important;
+}
+
 .alza-price-tracker-product-button:disabled {
   cursor: default;
   color: #6e6e6e !important;
   font-weight: 400 !important;
+}
+
+.alza-price-tracker-product-button--icon {
+  justify-content: center;
+  width: 32px !important;
+  padding: 0 !important;
+}
+
+.alza-price-tracker-product-button > .alza-price-tracker-icon {
+  color: inherit;
 }
 
 /* Hlídání v záhlaví karty jako Alzin odkaz „Hlídat cenu“ – text bez rámečku */
@@ -774,7 +928,7 @@ select.alza-price-tracker-history-target-currency {
 }
 
 /* Lišta nad seznamem a nad výpisem kategorie – vzhled jako Alzin box „Doporučujeme přidat k nákupu“: světle modrý rámeček,
-   štítek s logem a „Price Insight“ na horní hraně (ať je jasné, že lišta je z rozšíření), ovládání jako Alziny pilulky */
+   štítek s logem a „AllyZap“ na horní hraně (ať je jasné, že lišta je z rozšíření), ovládání jako Alziny pilulky */
 .alza-price-tracker-toolbar {
   position: relative;
   display: flex;
@@ -790,7 +944,7 @@ select.alza-price-tracker-history-target-currency {
   color: #222;
 }
 
-/* Štítek na hraně: logo + „Price Insight“ (createToolbarLogo v src/shared/core.js) */
+/* Štítek na hraně: logo + „AllyZap“ (createToolbarLogo v src/shared/core.js) */
 .alza-price-tracker-toolbar-logo {
   position: absolute;
   top: -12px;
@@ -1058,6 +1212,24 @@ select.alza-price-tracker-history-target-currency {
   stroke-dasharray: 6 4;
 }
 
+/* Díra ve sledování – šrafovaný pás tam, kde cenu nikdo neviděl (čára přes něj nevede) */
+.alza-price-tracker-history-gap {
+  pointer-events: none;
+}
+
+.alza-price-tracker-history-gap-bg {
+  fill: #f1f3f6;
+}
+
+.alza-price-tracker-history-gap-hatch {
+  stroke: #dfe3ea;
+  stroke-width: 3;
+}
+
+.alza-price-tracker-history-gap-label {
+  pointer-events: none;
+}
+
 .alza-price-tracker-history-chart .alza-price-tracker-history-milestone-label,
 .alza-price-tracker-product-spark .alza-price-tracker-history-milestone-label {
   font-weight: 600;
@@ -1071,6 +1243,58 @@ select.alza-price-tracker-history-target-currency {
   stroke: #9e9e9e;
   stroke-width: 1;
   pointer-events: none;
+}
+
+/* Přiblížení grafu – výběr úseku tažením a rychlé volby nad grafem */
+.alza-price-tracker-history-overlay {
+  cursor: crosshair;
+}
+
+.alza-price-tracker-history-selection {
+  fill: rgba(0, 148, 231, 0.12);
+  stroke: #0094e7;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.alza-price-tracker-history-zoom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.alza-price-tracker-history-zoom-button {
+  height: 26px !important;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  border: 1px solid #cceafa !important;
+  border-radius: 13px !important;
+  background: #fff !important;
+  color: #164194 !important;
+  font: inherit !important;
+  font-size: 12px !important;
+  line-height: 24px !important;
+  cursor: pointer;
+}
+
+.alza-price-tracker-history-zoom-button:hover {
+  border-color: #0094e7 !important;
+}
+
+.alza-price-tracker-history-zoom-button--active,
+.alza-price-tracker-history-zoom-button--active:hover {
+  border-color: #0094e7 !important;
+  background: #0094e7 !important;
+  color: #fff !important;
+}
+
+.alza-price-tracker-history-zoom-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: #6e6e6e;
 }
 
 .alza-price-tracker-history-tooltip {
@@ -1145,6 +1369,15 @@ select.alza-price-tracker-history-target-currency {
 
 .alza-price-tracker-history-table td[title] {
   cursor: help;
+}
+
+/* Řádek „Nesledováno od – do“ mezi záznamy oddělenými dírou ve sledování */
+.alza-price-tracker-history-table tr.alza-price-tracker-history-gap-row td {
+  padding: 4px 8px;
+  background: #f4f5f8;
+  color: #7b8290;
+  font-size: 12px;
+  text-align: center;
 }
 
 .alza-price-tracker-history-up,
@@ -1897,20 +2130,20 @@ a.alza-price-tracker-cart-warning-name:hover {
   margin: -4px 0 12px;
 }
 
-/* Pod počtem kusů – na střed sloupce, delší text přesahuje do stran */
-.alza-price-tracker-basket-insights-count {
+/* Jeden řádek chipů od názvu až k ceně (okraje dorovná alignBasketInsights), zarovnaný doprava k ceně, ke které
+   patří; na úzkém okně se zalomí */
+.alza-price-tracker-basket-insights-chips {
   display: flex;
-  flex: none;
-  justify-content: center;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
 }
 
-/* Pod cenou – zarovnané doprava k ceně, víc chipů pod sebou */
-.alza-price-tracker-basket-insights-price {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  margin-left: auto;
+.alza-price-tracker-basket-insights-chips .alza-price-tracker-basket-chip {
+  padding: 2px 9px;
+  font-size: 12px;
 }
 
 button.alza-price-tracker-basket-chip {
@@ -1986,7 +2219,7 @@ button.alza-price-tracker-basket-chip:disabled {
   background-color: transparent;
 }
 
-/* Kategorie: blok „Price Insight“ na začátku levého panelu filtrů – sleva, kupón, stav, Načíst zbývající */
+/* Kategorie: blok „AllyZap“ na začátku levého panelu filtrů – sleva, kupón, stav, Načíst zbývající */
 /* Rámeček se štítkem na hraně (bez podbarvení – nemá na Alze křičet), ať je vidět, že je to rozšíření */
 .alza-price-tracker-filter-block {
   position: relative;
@@ -2020,7 +2253,7 @@ button.alza-price-tracker-basket-chip:disabled {
   line-height: 1.4;
 }
 
-/* Štítek „Price Insight“ v levém panelu – na horní hraně boxu (logo samo je absolutní, top -12px) */
+/* Štítek „AllyZap“ v levém panelu – na horní hraně boxu (logo samo je absolutní, top -12px) */
 .alza-price-tracker-filter-block-name {
   position: absolute;
   top: 0;
@@ -2183,4 +2416,489 @@ button.alza-price-tracker-basket-chip:disabled {
 /* Ceny vyšší než cena podle stupně množstevní slevy – přeškrtnuté (jako původní cena u akce) */
 .alza-price-tracker-price--quantity-struck {
   text-decoration: line-through;
+}
+
+/* === Peněženka poukazů v košíku (content/basket-vouchers.js) ===
+   Bublina u odkazu „Využít slevový / dárkový poukaz“ – box jako lišty rozšíření (rámeček, štítek AllyZap na
+   horní hraně), šipka ukazuje na odkaz: vlevo (bublina vpravo od odkazu), nebo nahoře (bublina pod blokem poukazů) */
+.alza-price-tracker-vouchers {
+  position: absolute;
+  z-index: 1000;
+  width: min(340px, calc(100vw - 16px));
+  box-sizing: border-box;
+  padding: 18px 14px 10px;
+  border: 1.5px solid #d9e4f9;
+  border-radius: 8px;
+  background: #fff;
+  color: #222;
+  box-shadow: 0 4px 16px rgba(0, 39, 91, 0.1);
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  animation: alza-price-tracker-pop 0.14s ease-out;
+}
+
+.alza-price-tracker-vouchers[hidden] {
+  display: none;
+}
+
+.alza-price-tracker-vouchers-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1.5px solid #d9e4f9;
+  transform: rotate(45deg);
+}
+
+.alza-price-tracker-vouchers--right .alza-price-tracker-vouchers-arrow {
+  left: -7px;
+  border-top-color: transparent;
+  border-right-color: transparent;
+}
+
+.alza-price-tracker-vouchers--below .alza-price-tracker-vouchers-arrow {
+  top: -7px;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+}
+
+.alza-price-tracker-vouchers-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.alza-price-tracker-vouchers-icon {
+  display: inline-flex;
+  color: #00275b;
+}
+
+.alza-price-tracker-vouchers-icon .alza-price-tracker-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.alza-price-tracker-vouchers-title {
+  flex: 1;
+  color: #121212;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.alza-price-tracker-vouchers-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px -6px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #6e6e6e;
+  cursor: pointer;
+}
+
+.alza-price-tracker-vouchers-x:hover {
+  background: #f2f2f2;
+  color: #222;
+}
+
+.alza-price-tracker-vouchers-x .alza-price-tracker-icon {
+  width: 18px;
+  height: 18px;
+  color: inherit;
+}
+
+.alza-price-tracker-vouchers-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.alza-price-tracker-vouchers-item {
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #f8f8f8;
+}
+
+.alza-price-tracker-vouchers-item + .alza-price-tracker-vouchers-item {
+  margin-top: 6px;
+}
+
+.alza-price-tracker-vouchers-item--done {
+  background: #f1f8f2;
+}
+
+.alza-price-tracker-vouchers-item--new {
+  background: #f4f7fd;
+}
+
+.alza-price-tracker-vouchers-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.alza-price-tracker-vouchers-value {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.alza-price-tracker-vouchers-code {
+  overflow: hidden;
+  padding: 1px 6px;
+  border: 1px dashed #b9c6dc;
+  border-radius: 4px;
+  background: #fff;
+  font-family: Consolas, "Roboto Mono", monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alza-price-tracker-vouchers-insert,
+.alza-price-tracker-vouchers-skip {
+  margin-left: auto;
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid #cceafa;
+  border-radius: 16px;
+  background: #fff;
+  color: #164194;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.alza-price-tracker-vouchers-insert:hover,
+.alza-price-tracker-vouchers-skip:hover {
+  border-color: #0094e7;
+}
+
+.alza-price-tracker-vouchers-insert:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.alza-price-tracker-vouchers-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: #2e7d32;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.alza-price-tracker-vouchers-state .alza-price-tracker-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.alza-price-tracker-vouchers-detail {
+  margin-top: 2px;
+  color: #616161;
+  font-size: 12px;
+}
+
+.alza-price-tracker-vouchers-detail--soon {
+  color: #b45309;
+  font-weight: 500;
+}
+
+.alza-price-tracker-vouchers-detail--warn {
+  color: #c51718;
+}
+
+.alza-price-tracker-vouchers-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.alza-price-tracker-vouchers-actions .alza-price-tracker-vouchers-insert,
+.alza-price-tracker-vouchers-actions .alza-price-tracker-vouchers-skip {
+  margin-left: 0;
+}
+
+.alza-price-tracker-vouchers-manage {
+  display: block;
+  margin: 8px 0 0 auto;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: #164194;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.alza-price-tracker-vouchers-manage:hover {
+  text-decoration: underline;
+}
+
+/* Košík: už koupené zboží (Moje nákupy / hlídání po nákupu) – neutrálně šedě, jen informace */
+.alza-price-tracker-basket-chip--owned {
+  border-color: #d5d9e0;
+  background: #f4f5f7;
+  color: #3d4451;
+}
+
+/* Košík: souhrn hodnocení položek a měsíční rozpočet nad položkami – box se štítkem AllyZap jako lišty */
+.alza-price-tracker-basket-summary {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px 0 10px;
+  padding: 16px 12px 10px;
+  border: 1.5px solid #d9e4f9;
+  border-radius: 8px;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}
+
+.alza-price-tracker-basket-summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.alza-price-tracker-basket-summary .alza-price-tracker-basket-chip {
+  white-space: normal;
+}
+
+/* === Paměť prohlížení ve výpisech (listing-memory.js) ===
+   Řádek nad názvem produktu: prohlédnuto, poznámka; tlačítka Skrýt jen při najetí na dlaždici */
+.alza-price-tracker-memory {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  margin: 0 0 4px;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.alza-price-tracker-memory-seen,
+.alza-price-tracker-memory-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid #d5d9e0;
+  border-radius: 10px;
+  background: #f4f5f7;
+  color: #3d4451;
+}
+
+.alza-price-tracker-memory-note {
+  border-color: #f0d48a;
+  background: #fff8e1;
+  color: #6b4e00;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alza-price-tracker-memory .alza-price-tracker-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.alza-price-tracker-memory-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.browsingitem:hover .alza-price-tracker-memory-actions,
+.alza-price-tracker-memory-actions:focus-within,
+[data-alza-price-tracker-memory-hidden] .alza-price-tracker-memory-actions {
+  opacity: 1;
+}
+
+.alza-price-tracker-memory-action {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid #cceafa;
+  border-radius: 12px;
+  background: #fff;
+  color: #164194;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.alza-price-tracker-memory-action:hover {
+  border-color: #0094e7;
+}
+
+/* Skrytý produkt / značka: pryč z výpisu; po „Zobrazit skryté“ (atribut na <html>) průhledně s tlačítkem vrácení.
+   Skrývá se podmíněným pravidlem – po „Zobrazit skryté“ pravidlo jen přestane platit a dlaždici zůstane display Alzy
+   (flex). „display: revert“ by ho přepsal výchozím (block) a přebil by i skrytí filtrem slev
+   (data-alza-price-tracker-discount-hidden), které platí dál */
+:root:not([data-alza-price-tracker-memory-show]) [data-alza-price-tracker-memory-hidden] {
+  display: none !important;
+}
+
+[data-alza-price-tracker-memory-show] [data-alza-price-tracker-memory-hidden] {
+  opacity: 0.45;
+}
+
+.alza-price-tracker-memory-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 8px;
+  padding: 14px 12px 8px;
+  border: 1.5px solid #d9e4f9;
+  border-radius: 8px;
+  color: #164194;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+}
+
+.alza-price-tracker-memory-bar-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Detail produktu: vaše poznámka a její úprava */
+.alza-price-tracker-product-note--user {
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #fff8e1;
+  color: #6b4e00;
+  white-space: pre-wrap;
+}
+
+.alza-price-tracker-note-editor {
+  margin-top: 8px;
+}
+
+.alza-price-tracker-note-field {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #cceafa;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.alza-price-tracker-note-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Výpis televizí a monitorů: „Spočítat provoz“ nad výpisem (category.js updateEnergyFetchBar) – vzhled jako lišta paměti */
+.alza-price-tracker-energy-bar {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 8px;
+  padding: 14px 12px 8px;
+  border: 1.5px solid #d9e4f9;
+  border-radius: 8px;
+  color: #164194;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+}
+
+.alza-price-tracker-energy-bar-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Detail produktu: Recenze naruby (product-panel.js createReviewsPanel) */
+.alza-price-tracker-reviews {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #f8f8f8;
+  color: #3d4451;
+  font-size: 13px;
+}
+
+.alza-price-tracker-reviews-title {
+  font-weight: 600;
+  color: #121212;
+}
+
+.alza-price-tracker-reviews-trend {
+  margin-top: 4px;
+}
+
+.alza-price-tracker-reviews-trend--worse {
+  color: #c51718;
+  font-weight: 600;
+}
+
+.alza-price-tracker-reviews-label {
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+.alza-price-tracker-reviews-complaints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.alza-price-tracker-reviews-chip {
+  padding: 1px 8px;
+  border: 1px solid #f0b77a;
+  border-radius: 10px;
+  background: #fff1e0;
+  color: #a64b00;
+  cursor: help;
+}
+
+.alza-price-tracker-reviews-item {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e8e8e8;
+}
+
+.alza-price-tracker-reviews-stars {
+  color: #f5a000;
+  letter-spacing: 1px;
+}
+
+.alza-price-tracker-reviews-date {
+  margin-left: 8px;
+  color: #6e6e6e;
+  font-size: 12px;
+}
+
+.alza-price-tracker-reviews-text {
+  margin-top: 2px;
 }

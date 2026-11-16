@@ -1,11 +1,15 @@
 import AppKit
 import SafariServices
 import UserNotifications
+import os
+
+/// Log aplikace (Konzole / log show --predicate 'subsystem == "AllyZap.App"') – jen události, žádné adresy
+private let appLog = Logger(subsystem: "AllyZap.App", category: "app")
 
 /// Identifikátor rozšíření (appex) – build.sh ho zapíše do Info.plist aplikace
 let extensionBundleIdentifier: String =
     Bundle.main.object(forInfoDictionaryKey: "AlzaExtensionBundleIdentifier") as? String
-    ?? (Bundle.main.bundleIdentifier ?? "AlzaPriceInsight") + ".Extension"
+    ?? (Bundle.main.bundleIdentifier ?? "cz.janpnakovic.allyzap") + ".Extension"
 
 /// Podepsáno jen „ad hoc“ (bez vývojářského certifikátu) – Safari pak vyžaduje Povolit nepodepsaná rozšíření
 let isAdHocSigned: Bool = Bundle.main.object(forInfoDictionaryKey: "AlzaAdHocSigned") as? Bool ?? true
@@ -17,6 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private let launchedAt = Date()
     private var mainWindow: MainWindowController?
     private var quitTimer: Timer?
+    /// Spuštěno kliknutím na notifikaci (klíč při spuštění); okno otevřené uživatelem (Dock, menu) se pak nezavírá
+    private var launchedForNotification = false
+    private var openedByUser = false
+    /// Okno odložené po spuštění (než se ukáže, může přijít signál kliknutí z rozšíření)
+    private var pendingWindow: DispatchWorkItem?
 
     init(arguments: [String]) {
         self.arguments = arguments
@@ -26,6 +35,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationWillFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         NSApp.mainMenu = makeMainMenu()
+        DistributedNotificationCenter.default().addObserver(forName: AlzaShared.clickedSignal, object: nil, queue: .main) { [weak self] _ in
+            self?.notificationClickedInExtension()
+        }
+    }
+
+    /// Kliknutí na notifikaci obsloužilo rozšíření (Alza je už v Safari) a macOS kvůli tomu spustil / přepnul aplikaci:
+    /// okno neukazovat. Spuštěná jen kvůli tomu skončí, jinak uhne do pozadí, ať je vepředu Safari
+    private func notificationClickedInExtension() {
+        appLog.notice("Click signal from extension, window pending: \(self.pendingWindow != nil, privacy: .public)")
+        if let pending = pendingWindow {
+            pending.cancel()
+            pendingWindow = nil
+            quitTimer?.invalidate()
+            quitTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in NSApp.terminate(nil) }
+        } else if NSApp.isActive {
+            NSApp.hide(nil)
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -37,22 +63,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             snapshotAndQuit(to: arguments[index + 1])
             return
         }
+        appLog.notice("Launched, notification key: \(notification.userInfo?[NSApplication.launchUserNotificationUserInfoKey] != nil, privacy: .public)")
         // Spuštěno kliknutím na notifikaci: okno není potřeba, otevře se produkt (didReceive). Kdyby odpověď nepřišla, skončit
         if notification.userInfo?[NSApplication.launchUserNotificationUserInfoKey] != nil {
+            launchedForNotification = true
             quitTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { _ in NSApp.terminate(nil) }
             return
         }
-        showMainWindow()
-        // Při prvním spuštění rovnou požádat o povolení notifikací (systém se zeptá jen jednou)
-        AlzaNotifications.authorizationStatus { status in
-            guard status == .notDetermined else { return }
-            AlzaNotifications.requestAuthorization { _, _ in
-                DispatchQueue.main.async { self.mainWindow?.refresh() }
+        // macOS 26 klíč při spuštění neposílá a kliknutí doručí rozšíření (to pošle clickedSignal) – okno proto
+        // až po chvíli, kdy je jasné, že aplikaci nespustilo kliknutí na notifikaci
+        let show = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingWindow = nil
+            self.showMainWindow()
+            // Při prvním spuštění rovnou požádat o povolení notifikací (systém se zeptá jen jednou)
+            AlzaNotifications.authorizationStatus { status in
+                guard status == .notDetermined else { return }
+                AlzaNotifications.requestAuthorization { _, _ in
+                    DispatchQueue.main.async { self.mainWindow?.refresh() }
+                }
             }
         }
+        pendingWindow = show
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: show)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        appLog.notice("Reopen, visible windows: \(flag, privacy: .public)")
+        openedByUser = true
+        pendingWindow?.cancel()
+        pendingWindow = nil
         if !flag { showMainWindow() }
         return true
     }
@@ -62,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func showMainWindow() {
+        launchedForNotification = false
         quitTimer?.invalidate()
         quitTimer = nil
         if mainWindow == nil { mainWindow = MainWindowController() }
@@ -91,8 +132,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let clicked = response.actionIdentifier == UNNotificationDefaultActionIdentifier
         DispatchQueue.main.async {
             if clicked { Self.openInSafari(url) }
-            let launchedForNotification = self.mainWindow == nil || Date().timeIntervalSince(self.launchedAt) < 5
-            if launchedForNotification {
+            // Bez klíče při spuštění (některé verze macOS ho u UNUserNotification neposílají) zůstává záložní odhad
+            // podle času od spuštění – ale nikdy u okna, které uživatel sám otevřel (Dock)
+            let early = Date().timeIntervalSince(self.launchedAt) < 5 && !self.openedByUser
+            appLog.notice("Notification response, clicked: \(clicked, privacy: .public), url: \(url != nil, privacy: .public), launchedForNotification: \(self.launchedForNotification, privacy: .public), early: \(early, privacy: .public), window: \(self.mainWindow != nil, privacy: .public)")
+            if self.launchedForNotification || self.mainWindow == nil || early {
                 self.mainWindow?.close()
                 self.quitTimer?.invalidate()
                 self.quitTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in NSApp.terminate(nil) }
@@ -101,22 +145,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    /// Adresa Alzy v Safari; bez adresy jen přepne do Safari
+    /// Adresa Alzy v Safari; bez adresy jen přepne do Safari (AlzaShared – stejně i v rozšíření)
     static func openInSafari(_ url: URL?) {
-        let workspace = NSWorkspace.shared
-        guard let safari = workspace.urlForApplication(withBundleIdentifier: "com.apple.Safari") else {
-            if let url { workspace.open(url) }
-            return
-        }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        if let url {
-            workspace.open([url], withApplicationAt: safari, configuration: configuration) { _, error in
-                if error != nil { DispatchQueue.main.async { workspace.open(url) } }
-            }
-        } else {
-            workspace.openApplication(at: safari, configuration: configuration, completionHandler: nil)
-        }
+        AlzaShared.openInSafari(url)
     }
 
     // MARK: - Kontrola sestavení
@@ -167,7 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     // MARK: - Menu
 
     private func makeMainMenu() -> NSMenu {
-        let name = "Alza Price Insight"
+        let name = "AllyZap"
         let menu = NSMenu()
 
         let appItem = NSMenuItem()

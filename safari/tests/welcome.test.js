@@ -39,7 +39,7 @@
     document.getElementById("runCheck").click();
     await mock.until(() => status("notifications") && status("notifications") !== "Ověřuji…" && status("pin") !== "Ověřuji…", 400);
     check("notifikace: stav z aplikace", status("notifications") === "Notifikace jsou v macOS povolené", status("notifications"));
-    check("notifikace: nápověda pro macOS", help("notifications").includes("Nastavení systému → Oznámení → Alza Price Insight"), help("notifications"));
+    check("notifikace: nápověda pro macOS", help("notifications").includes("Nastavení systému → Oznámení → AllyZap"), help("notifications"));
     check("ikona na liště: tip pro Safari", status("pin") === "Tip: mějte ikonu na liště Safari", status("pin"));
     check("ikona na liště: bez dílku skládačky z Chrome", help("pin").includes("Upravit nástrojový panel") && !help("pin").includes("skládačky"), help("pin"));
 

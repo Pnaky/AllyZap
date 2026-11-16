@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-w="pageTitle">Vítejte – Alza Price Insight</title>
+    <title data-w="pageTitle">Vítejte – AllyZap</title>
     <link rel="stylesheet" href="../shared/page.css" />
     <style>
       /* Barvy z ikony a propagačních obrázků: tmavý rám, limetková, oranžová, námořnická modrá */
@@ -584,7 +584,8 @@
         font-weight: 600;
       }
 
-      .saved.error {
+      .saved.error,
+      .option-help.error {
         color: var(--todo);
       }
 
@@ -611,7 +612,7 @@
     <div class="wrap">
       <header class="app-header">
         <img src="../../img/icon-48.png" alt="" />
-        <div><span class="app-title">Alza Price Insight</span><span class="app-sub" data-w="subtitle">Průvodce nastavením</span></div>
+        <div><span class="app-title">AllyZap</span><span class="app-sub" data-w="subtitle">Průvodce nastavením</span></div>
         <label class="language" id="languageLabel"
           ><span aria-hidden="true" data-icon="language"></span>
           <select id="language">
@@ -817,6 +818,13 @@
             </div>
             <p class="option-help" data-o="availabilityTip"></p>
           </div>
+          <div class="option" data-setting="remindVouchers">
+            <div class="option-row">
+              <span class="option-label" data-o="remindVouchers"></span>
+              <input type="checkbox" class="switch" name="remindVouchers" />
+            </div>
+            <p class="option-help" data-o="remindVouchersTip"></p>
+          </div>
           <div class="option">
             <div class="option-row">
               <span class="option-label" data-o="quietHours"></span>
@@ -830,6 +838,8 @@
           <div class="option">
             <button type="button" id="testNotifications" data-o="testNotifications"></button>
             <p class="option-help" data-o="testNotificationsTitle"></p>
+            <!-- Rada podle systému (Windows / macOS) a po zkoušce i její výsledek (describeNotificationTest) -->
+            <p class="option-help" id="testNotificationsResult" role="status"></p>
           </div>
           <div class="nav">
             <button type="button" data-go="categories" data-w="back">← Zpět</button>
@@ -870,7 +880,7 @@
           </ul>
           <div class="nav">
             <a class="button" id="openHelp" target="_blank" data-w="openHelp"></a>
-            <a class="button" id="openSettings" href="../options/options.html" target="_blank" data-w="openSettings"></a>
+            <a class="button" id="openSettings" href="../options/options.html#s-tracking" target="_blank" data-w="openSettings"></a>
           </div>
         </section>
       </main>

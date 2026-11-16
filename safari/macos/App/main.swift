@@ -1,4 +1,4 @@
-// Aplikace Alza Price Insight: obal rozšíření pro Safari. Ukazuje, jak rozšíření zapnout, a obsluhuje notifikace
+// Aplikace AllyZap: obal rozšíření pro Safari. Ukazuje, jak rozšíření zapnout, a obsluhuje notifikace
 // (rozšíření je posílá přes SafariWebExtensionHandler, kliknutí na ně otevře produkt v Safari).
 //
 // Parametry pro kontrolu sestavení (bez okna):

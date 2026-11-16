@@ -67,6 +67,7 @@ function applyTexts() {
   renderOpenAlza();
   renderNewsTexts();
   markNew();
+  renderNotificationTest();
   renderWatching().catch(logError);
 }
 
@@ -412,10 +413,29 @@ document.querySelectorAll(".domain").forEach((button) =>
   })
 );
 
-// Služba na pozadí pošle ukázkové notifikace (na zprávu neodpovídá – zavřený port není chyba)
-document.getElementById("testNotifications").addEventListener("click", () =>
-  chrome.runtime.sendMessage({ action: "watchTestNotifications" }).catch(() => {})
-);
+// Pod tlačítkem Vyzkoušet notifikace rada podle systému, po zkoušce i výsledek (texty ze stránky nastavení)
+let notificationTest; // undefined = nezkoušeno, null = služba neodpověděla, jinak odpověď
+let notificationTestRunning = false;
+
+function renderNotificationTest() {
+  const output = document.getElementById("testNotificationsResult");
+  const text = (key, ...params) => AlzaCore.fillTemplate(o(key), params);
+  const outcome = notificationTestRunning ? { text: text("testNotificationsSending"), error: false } : describeNotificationTest(notificationTest, text);
+  output.textContent = outcome.text;
+  output.classList.toggle("error", outcome.error);
+  appendNotificationSettingsButton(output, text); // jen Safari
+}
+
+document.getElementById("testNotifications").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  notificationTestRunning = true;
+  renderNotificationTest();
+  notificationTest = await chrome.runtime.sendMessage({ action: "watchTestNotifications" }).catch(() => null);
+  notificationTestRunning = false;
+  renderNotificationTest();
+  button.disabled = false;
+});
 
 // === Hotovo ===
 

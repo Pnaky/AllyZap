@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-i18n="pageTitle">Nastavení – Alza Price Insight</title>
+    <title data-i18n="pageTitle">Nastavení – AllyZap</title>
     <link rel="stylesheet" href="../shared/page.css" />
     <style>
       /* Vzhled jako průvodce nastavením (src/welcome/): ploché pozadí podle systému (světlé / tmavé), bílé karty */
@@ -24,7 +24,7 @@
 
       /* Stejná šířka (960 px obsahu) a záhlaví jako průvodce a nápověda */
       body {
-        max-width: 992px;
+        max-width: 1252px; /* panel 232 + mezera 28 + obsah 960 + okraje 32 */
         margin: 0 auto;
         padding: 28px 16px 56px;
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
@@ -34,30 +34,6 @@
       }
 
       /* Pozadí a záhlaví: ../shared/page.css */
-
-      /* Průvodce a nápověda vpravo v hlavičce – barvy podle světlého / tmavého režimu (../shared/page.css) */
-      .help-link {
-        margin-left: auto;
-        padding: 7px 14px;
-        border: 1px solid var(--head-btn-border);
-        border-radius: 9px;
-        background: var(--head-btn-bg);
-        color: var(--head-btn-fg);
-        font-size: 13px;
-        font-weight: 600;
-        text-decoration: none;
-        white-space: nowrap;
-      }
-
-      /* Průvodce a Nápověda vedle sebe – vpravo odsazený jen první */
-      .help-link + .help-link {
-        margin-left: 0;
-      }
-
-      .help-link:hover {
-        border-color: var(--head-btn-hover-border);
-        background: var(--head-btn-hover-bg);
-      }
 
       /* Nastavení: záložky + panel (styl záložek níž u .tabs), řádky ve dvou sloupcích vedle sebe */
       #settings {
@@ -216,11 +192,15 @@
         outline: none;
       }
 
+      /* Bublina nápovědy: mimo najetí / fokus se nekreslí vůbec (display: none) – skrytá přes visibility by dál
+         zabírala místo a roztáhla stránku (posuvníky). Polohu v okně hlídá placeInfoTip v options.js: u pravého
+         okraje ji posune doleva (--tip-shift), u spodního ji dá nad otazník (.tip-up) */
       .info::after {
         content: attr(data-tip);
+        display: none;
         position: absolute;
         top: calc(100% + 8px);
-        left: -10px;
+        left: calc(-10px + var(--tip-shift, 0px));
         z-index: 20;
         width: 310px;
         padding: 11px 13px;
@@ -233,22 +213,35 @@
         line-height: 1.45;
         text-align: left;
         white-space: normal;
-        visibility: hidden;
-        opacity: 0;
         pointer-events: none;
-        transition: opacity 0.12s;
+        animation: info-tip-in 0.12s;
       }
 
       .info:hover::after,
       .info:focus::after {
-        visibility: visible;
-        opacity: 1;
+        display: block;
+      }
+
+      .info.tip-up::after {
+        top: auto;
+        bottom: calc(100% + 8px);
+      }
+
+      @keyframes info-tip-in {
+        from {
+          opacity: 0;
+        }
       }
 
       .note {
         margin: 6px 0 0;
         font-size: 13px;
         color: var(--muted);
+      }
+
+      /* Vyzkoušet notifikace: prohlížeč notifikaci odmítl / má je zakázané */
+      .note.error {
+        color: #c62828;
       }
 
       .saved {
@@ -262,10 +255,12 @@
         min-height: 0;
       }
 
-      /* „✓ Uloženo“ vpravo v řadě záložek nastavení – nezabírá místo a nic neposouvá */
+      /* „✓ Uloženo“ vpravo nahoře v kartě nastavení – nezabírá místo a nic neposouvá */
       [data-saved] {
-        align-self: center;
-        margin-left: auto;
+        position: absolute;
+        top: 22px;
+        right: 26px;
+        z-index: 1;
         padding: 2px 10px;
         border-radius: 999px;
         background: #edf7ee;
@@ -666,34 +661,63 @@
         color: var(--muted);
       }
 
-      /* Záložky nastavení a záložky dat pod ním – na pozadí stránky (světlé / tmavé podle systému), vybraná splyne s bílým panelem pod ní:
-         má stejný rámeček jako karta a o 1 px přesahuje dolů přes horní hranu panelu */
-      .tabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        padding: 0 10px;
+      /* Rozložení: boční panel vlevo (přilepený při posouvání, odkazy dole na spodku okna), obsah vpravo */
+      .layout {
+        display: grid;
+        grid-template-columns: 232px minmax(0, 1fr);
+        gap: 28px;
+        align-items: start;
       }
 
-      /* Nastavení: řada záložek (role tablist) uvnitř .tabs, vedle ní „✓ Uloženo“ */
-      .tab-list {
+      .side {
+        position: sticky;
+        top: 28px;
         display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        min-width: 0;
+        flex-direction: column;
+        min-height: calc(100vh - 56px);
+        /* Panel končí 28 px nad spodním okrajem okna, stránka má dole okraj 56 px – bez záporného okraje by byla
+           i krátká stránka o 28 px vyšší než okno (trvalý svislý posuvník). Poloha panelu se nemění */
+        margin-bottom: -28px;
       }
 
+      .side .app-header {
+        margin: 0 0 22px 6px;
+      }
+
+      .side-title {
+        margin: 16px 0 6px 12px;
+        color: var(--head-sub);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .side-tabs {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      /* Položka panelu (role tab): vybraná bílá jako karta s modrou linkou vlevo, počet jako odznak vpravo */
       .tab {
-        position: relative;
-        z-index: 1;
-        margin-bottom: -1px;
-        padding: 10px 16px 9px;
-        border: 1px solid transparent;
-        border-bottom: 0;
-        border-radius: 12px 12px 0 0;
-        background: var(--tab-bg);
-        font-weight: 600;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 8px 12px;
+        border: 0;
+        border-radius: 10px;
+        background: none;
         color: var(--tab-fg);
+        font: inherit;
+        font-weight: 600;
+        text-align: left;
+      }
+
+      .tab .alza-price-tracker-icon {
+        width: 18px;
+        height: 18px;
+        margin-right: 10px;
       }
 
       .tab:hover {
@@ -702,15 +726,129 @@
       }
 
       .tab[aria-selected="true"] {
-        border-color: var(--card-border);
         background: #fff;
-        color: var(--text);
-        box-shadow: inset 0 3px 0 var(--blue);
+        color: #00275b;
+        box-shadow: var(--card-shadow), inset 3px 0 0 var(--blue);
       }
 
       .tab-count {
+        margin-left: auto;
+        padding: 0 7px;
+        border-radius: 10px;
+        background: var(--tab-bg);
+        font-size: 12px;
+        line-height: 20px;
+      }
+
+      .tab-count:empty {
+        display: none;
+      }
+
+      .tab[aria-selected="true"] .tab-count {
+        background: #e6f4fd;
+        color: #164194;
+      }
+
+      .side-foot {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-top: auto;
+        padding-top: 16px;
+        border-top: 1px solid var(--tab-bg);
+      }
+
+      .side-link {
+        display: flex;
+        align-items: center;
+        padding: 6px 12px;
+        border-radius: 10px;
+        color: var(--head-sub);
+        font-weight: 500;
+        text-decoration: none;
+      }
+
+      .side-link .alza-price-tracker-icon {
+        margin-right: 10px;
+        color: inherit;
+      }
+
+      .side-link:hover {
+        background: var(--tab-hover-bg);
+        color: var(--tab-hover-fg);
+      }
+
+      /* Neviděné novinky: červená tečka za odkazem (jako u nových zpráv) */
+      .side-link.unseen::after {
+        content: "";
+        width: 7px;
+        height: 7px;
+        margin-left: 6px;
+        border-radius: 50%;
+        background: #e4003a;
+      }
+
+      .side-foot .version {
+        margin: 6px 12px 0;
+        color: var(--head-sub);
+        font-size: 12px;
+      }
+
+      /* Nadpis karty = vybraná položka panelu (updatePanelTitle) */
+      .panel-title {
+        margin: 0 0 6px;
+        font-size: 19px;
+        line-height: 1.3;
+      }
+
+      .panel-count {
+        color: var(--muted);
+        font-size: 15px;
         font-weight: 400;
-        opacity: 0.75;
+      }
+
+      #settings {
+        position: relative;
+      }
+
+      /* Úzké okno: panel nahoře, řady záložek vodorovně s posunem do stran, odkazy v řádku */
+      @media (max-width: 760px) {
+        .layout {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 14px;
+        }
+
+        .side {
+          position: static;
+          min-height: 0;
+          margin-bottom: 0;
+        }
+
+        .side .app-header {
+          margin: 0 0 8px;
+        }
+
+        .side-title {
+          display: none;
+        }
+
+        .side-tabs {
+          flex-direction: row;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+
+        .tab {
+          width: auto;
+          white-space: nowrap;
+        }
+
+        .side-foot {
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: center;
+          padding-top: 6px;
+        }
       }
 
       .tab-panel,
@@ -856,10 +994,225 @@
         section {
           padding: 18px 16px;
         }
+      }
 
-        .help-link {
-          padding: 6px 10px;
-        }
+      /* Moje nákupy: kategorie – podíl jako vodorovný pruh */
+      .owned-categories {
+        margin: 8px 0;
+      }
+
+      .owned-categories summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .owned-categories table td:first-child {
+        max-width: 280px;
+      }
+
+      .category-share {
+        display: inline-block;
+        width: 120px;
+        height: 8px;
+        border-radius: 4px;
+        background: var(--line);
+        vertical-align: middle;
+        overflow: hidden;
+      }
+
+      .category-share > span {
+        display: block;
+        height: 100%;
+        background: #4f7cc9;
+      }
+
+      /* Moje nákupy: Dochází vám? – seznam nad grafem */
+      .owned-restock {
+        margin: 8px 0;
+      }
+
+      .owned-restock summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .owned-restock ul {
+        margin: 6px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .owned-restock li {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 10px;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .owned-restock .restock-info {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .owned-restock .restock-price {
+        margin-left: auto;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+
+      .owned-restock .restock-due {
+        color: #b45309;
+        font-weight: 600;
+      }
+
+      .owned-restock .restock-good {
+        color: #1b6e20;
+        font-weight: 600;
+      }
+
+      .owned-restock .restock-wait {
+        color: #0b5cad;
+        font-weight: 600;
+      }
+
+      /* Moje nákupy: odkaz na objednávku a tlačítko Faktura vedle sebe */
+      .owned-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .owned-invoice {
+        display: inline-flex;
+        padding: 2px;
+        border: none;
+        background: none;
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .owned-invoice:disabled {
+        opacity: 0.5;
+        cursor: progress;
+      }
+
+      /* Kódy a poukazy: přidání poukazu – pole pro text e-mailu nad políčky, políčka v řadě (zalomí se) */
+      .voucher-form {
+        margin: 6px 0 12px;
+      }
+
+      .voucher-form textarea {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px solid var(--field);
+        border-radius: 9px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        resize: vertical;
+      }
+
+      .voucher-fields {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 8px 12px;
+        margin-top: 8px;
+      }
+
+      .voucher-fields label {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .voucher-fields input,
+      .voucher-fields select {
+        padding: 5px 8px;
+        border: 1px solid var(--field);
+        border-radius: 7px;
+        color: inherit;
+        font: inherit;
+        font-size: 13px;
+      }
+
+      .voucher-fields input[name="code"] {
+        width: 150px;
+        text-transform: uppercase;
+      }
+
+      .voucher-fields input[name="value"],
+      .voucher-fields input[name="minOrder"] {
+        width: 90px;
+      }
+
+      .voucher-value {
+        display: flex;
+        gap: 4px;
+      }
+
+      .voucher-note {
+        flex: 1;
+        min-width: 160px;
+      }
+
+      .voucher-fields label[hidden] {
+        display: none;
+      }
+
+      /* Kód s tlačítkem Kopírovat v tabulce */
+      .code-cell {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .code-cell code {
+        padding: 1px 6px;
+        border: 1px dashed var(--muted);
+        border-radius: 4px;
+        font: 600 12px/1.5 ui-monospace, Consolas, monospace;
+        user-select: all;
+      }
+
+      /* Tabulka poukazů: první sloupec je kód s tlačítkem – nezužovat jako název produktu; roztáhne se poznámka */
+      .vouchers-table th:first-child,
+      .vouchers-table td:first-child {
+        width: auto;
+        max-width: none;
+      }
+
+      .vouchers-table td.voucher-note-cell {
+        width: 100%;
+        max-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: left;
+      }
+
+      .row-actions {
+        display: inline-flex;
+        gap: 4px;
+        white-space: nowrap;
+      }
+
+      .muted-row td {
+        color: var(--muted);
+      }
+
+      td.voucher-soon {
+        color: #b45309;
+        font-weight: 600;
+      }
+
+      .section-title {
+        margin: 20px 0 4px;
+        font-size: 15px;
       }
     </style>
     <!-- Dialog historie cen z content scriptu (třídy alza-price-tracker-…) -->
@@ -867,25 +1220,38 @@
   </head>
 
   <body>
-    <header class="app-header">
-      <img src="../../img/icon-48.png" alt="" />
-      <div>
-        <h1 class="app-title">Alza Price Insight</h1>
-        <span class="app-sub version" id="version"></span>
-      </div>
-      <a class="help-link" href="../welcome/welcome.html#news" target="_blank" data-i18n="newsLink" data-i18n-title="newsLinkTitle">Co je nového</a>
-      <a class="help-link" href="../welcome/welcome.html#check" target="_blank" data-i18n="welcomeLink" data-i18n-title="welcomeLinkTitle">Průvodce</a>
-      <a class="help-link" id="helpLink" href="../help/help.html" target="_blank" data-i18n="helpLink" data-i18n-title="helpLinkTitle">Nápověda</a>
-    </header>
-
-    <!-- Texty: data-i18n (text), data-i18n-title, data-i18n-tip (bublina „?“ + aria-label), data-i18n-placeholder –
-         slovník v options-texts.js; čeština tady jen do spuštění skriptu (shodu s cz hlídá tests/options-i18n.test.js) -->
-    <!-- Nastavení po záložkách (vybraná se pamatuje v prohlížeči); řádky každé záložky ve dvou sloupcích -->
-    <form id="settings">
-      <!-- Záložky: tlačítko <panel>-button ↔ panel (aria-controls / aria-labelledby; párování hlídá
-           tests/audit-2026-11-12-options.test.js). „✓ Uloženo“ je vedle řady záložek, ne v ní (tablist smí mít jen záložky) -->
-      <div class="tabs">
-        <div class="tab-list" role="tablist" aria-label="Nastavení" data-i18n-label="settingsTabsLabel">
+    <!-- Boční panel: logo, skupiny Moje data a Nastavení (dvě řady záložek, svisle) a dole novinky, průvodce,
+         nápověda a verze. Záložky: tlačítko <panel>-button ↔ panel (aria-controls / aria-labelledby; párování hlídá
+         tests/audit-2026-11-12-options.test.js). V úzkém okně je panel nahoře a řady záložek vodorovně -->
+    <div class="layout">
+      <aside class="side">
+        <header class="app-header">
+          <img src="../../img/icon-48.png" alt="" />
+          <h1 class="app-title">AllyZap</h1>
+        </header>
+        <h2 class="side-title" data-i18n="viewData">Moje data</h2>
+        <div class="side-tabs" role="tablist" aria-orientation="vertical" aria-label="Hlídání a uložená data" data-i18n-label="dataTabsLabel">
+          <button type="button" class="tab" role="tab" id="tab-lists-button" aria-controls="tab-lists" data-tab="lists">
+            <span data-i18n="tabLists">Hlídané seznamy</span> <span class="tab-count" id="countLists"></span>
+          </button>
+          <button type="button" class="tab" role="tab" id="tab-products-button" aria-controls="tab-products" data-tab="products">
+            <span data-i18n="tabProducts">Hlídané produkty</span> <span class="tab-count" id="countProducts"></span>
+          </button>
+          <button type="button" class="tab" role="tab" id="tab-owned-button" aria-controls="tab-owned" data-tab="owned">
+            <span data-i18n="tabOwned">Moje nákupy</span> <span class="tab-count" id="countOwned"></span>
+          </button>
+          <button type="button" class="tab" role="tab" id="tab-codes-button" aria-controls="tab-codes" data-tab="codes">
+            <span data-i18n="tabCodes">Kódy a poukazy</span> <span class="tab-count" id="countCodes"></span>
+          </button>
+          <button type="button" class="tab" role="tab" id="tab-hidden-button" aria-controls="tab-hidden" data-tab="hidden">
+            <span data-i18n="tabHidden">Skryté ve výpisech</span> <span class="tab-count" id="countHidden"></span>
+          </button>
+          <button type="button" class="tab" role="tab" id="tab-data-button" aria-controls="tab-data" data-tab="data">
+            <span data-i18n="tabData">Uložená data</span> <span class="tab-count" id="countData"></span>
+          </button>
+        </div>
+        <h2 class="side-title" data-i18n="viewSettings">Nastavení</h2>
+        <div class="side-tabs" role="tablist" aria-orientation="vertical" aria-label="Nastavení" data-i18n-label="settingsTabsLabel">
           <button type="button" class="tab" role="tab" id="settings-tracking-button" aria-controls="settings-tracking" data-settings-tab="tracking">
             <span data-i18n="tracking">Sledování cen</span>
           </button>
@@ -905,9 +1271,27 @@
           <button type="button" class="tab" role="tab" id="settings-general-button" aria-controls="settings-general" data-settings-tab="general">
             <span data-i18n="general">Obecné</span>
           </button>
+          <button type="button" class="tab" role="tab" id="settings-log-button" aria-controls="settings-log" data-settings-tab="log">
+            <span data-i18n="tabLog">Logy běhů</span> <span class="tab-count" id="countLog"></span>
+          </button>
         </div>
-        <span class="saved" data-saved role="status"></span>
-      </div>
+        <!-- Novinky: tečka, dokud uživatel neviděl novinky nainstalované verze (renderNewsDot) -->
+        <div class="side-foot">
+          <a class="side-link" id="newsLink" href="../welcome/welcome.html#news" target="_blank" data-i18n="newsLink" data-i18n-title="newsLinkTitle">Co je nového</a>
+          <a class="side-link" href="../welcome/welcome.html#check" target="_blank" data-i18n="welcomeLink" data-i18n-title="welcomeLinkTitle">Průvodce</a>
+          <a class="side-link" id="helpLink" href="../help/help.html" target="_blank" data-i18n="helpLink" data-i18n-title="helpLinkTitle">Nápověda</a>
+          <span class="version" id="version"></span>
+        </div>
+      </aside>
+
+      <main class="content">
+
+    <!-- Texty: data-i18n (text), data-i18n-title, data-i18n-tip (bublina „?“ + aria-label), data-i18n-placeholder –
+         slovník v options-texts.js; čeština tady jen do spuštění skriptu (shodu s cz hlídá tests/options-i18n.test.js) -->
+    <!-- Nastavení po záložkách (vybraná se pamatuje v prohlížeči); řádky každé záložky ve dvou sloupcích -->
+    <form id="settings" hidden>
+      <!-- „✓ Uloženo“ vpravo nahoře v kartě (showSaved hledá [data-saved] ve formuláři) -->
+      <span class="saved" data-saved role="status"></span>
       <section class="tab-panel settings-panel" id="settings-tracking" role="tabpanel" aria-labelledby="settings-tracking-button">
         <div class="settings-columns">
           <div class="settings-col">
@@ -963,6 +1347,15 @@
               >
               <span class="controls" id="warrantyRow"><input type="checkbox" class="switch" name="remindWarranty" /></span>
             </div>
+            <div class="row">
+              <span class="label"
+                ><span data-i18n="monthlyBudget">Měsíční rozpočet</span>
+                <span class="info" tabindex="0" role="note" data-i18n-tip="monthlyBudgetTip">?</span></span
+              >
+              <span class="controls" id="budgetRow"
+                ><input type="number" name="monthlyBudget" min="0" max="100000000" step="1" /> <span id="budgetUnit">Kč</span></span
+              >
+            </div>
           </div>
         </div>
       </section>
@@ -1008,11 +1401,20 @@
                 <input type="checkbox" class="switch" name="quietHours"
               /></span>
             </div>
+            <div class="row">
+              <span class="label"
+                ><span data-i18n="remindVouchers">Připomínat konec platnosti poukazů</span>
+                <span class="info" tabindex="0" role="note" data-i18n-tip="remindVouchersTip">?</span></span
+              >
+              <span class="controls"><input type="checkbox" class="switch" name="remindVouchers" /></span>
+            </div>
           </div>
         </div>
         <div class="buttons">
           <button type="button" id="testNotifications" data-i18n="testNotifications" data-i18n-title="testNotificationsTitle">Vyzkoušet notifikace</button>
         </div>
+        <!-- Rada podle systému (Windows / macOS) a po zkoušce i její výsledek (describeNotificationTest) -->
+        <p class="note" id="testNotificationsResult" role="status"></p>
       </section>
       <section class="tab-panel settings-panel" id="settings-categories" role="tabpanel" aria-labelledby="settings-categories-button" hidden>
         <div class="settings-columns">
@@ -1134,9 +1536,11 @@
               <summary data-i18n="wipeSummary">Smazat všechna data…</summary>
               <p class="note">
                 <span data-i18n="wipeNote"
-                  >Smaže historii cen, uložené ceny, hlídané seznamy a produkty, cílové ceny, nákupy, slevové kódy a připomínky cashbacku
-                  (nastavení zůstane). Nejdřív se stáhne záloha – smažete až druhým klepnutím, když je uložená. Nákupy a kódy v záloze nejsou;
-                  s hlídáním ceny po nákupu nebo se zapnutými Mými nákupy se nákupy znovu načtou z Alzy. Pro potvrzení napište</span
+                  >Smaže historii cen, uložené ceny, hlídané seznamy a produkty, cílové ceny, nákupy, slevové kódy u produktů, připomínky
+                  cashbacku, peněženku poukazů, poznámky a skryté produkty a značky (nastavení zůstane). Nejdřív se stáhne záloha – smažete až
+                  druhým klepnutím, když je uložená. V záloze jsou i poukazy s kódy – nikomu ji neposílejte. Nákupy a slevové kódy u produktů
+                  v záloze nejsou; s hlídáním ceny po nákupu nebo se zapnutými Mými nákupy se nákupy znovu načtou z Alzy. Pro potvrzení
+                  napište</span
                 >
                 <strong data-i18n="wipeWord">SMAZAT</strong><span data-i18n="wipeNoteEnd">:</span>
               </p>
@@ -1148,27 +1552,17 @@
           </div>
         </div>
       </section>
+      <section class="tab-panel settings-panel" id="settings-log" role="tabpanel" aria-labelledby="settings-log-button" hidden>
+        <p class="note" style="margin: 0 0 6px" data-i18n="logNote">
+          Posledních 50 kontrol na pozadí i ručních. Kliknutím na řádek běhu uvidíte, co se u kterého produktu změnilo nebo co se
+          nepovedlo.
+        </p>
+        <div id="watchLog" class="watch-log"></div>
+      </section>
     </form>
     <input type="file" id="importFile" accept=".json,application/json" hidden />
 
-    <div class="tabs" role="tablist" aria-label="Hlídání a uložená data" data-i18n-label="dataTabsLabel">
-      <button type="button" class="tab" role="tab" id="tab-lists-button" aria-controls="tab-lists" data-tab="lists">
-        <span data-i18n="tabLists">Hlídané seznamy</span> <span class="tab-count" id="countLists"></span>
-      </button>
-      <button type="button" class="tab" role="tab" id="tab-products-button" aria-controls="tab-products" data-tab="products">
-        <span data-i18n="tabProducts">Hlídané produkty</span> <span class="tab-count" id="countProducts"></span>
-      </button>
-      <button type="button" class="tab" role="tab" id="tab-owned-button" aria-controls="tab-owned" data-tab="owned">
-        <span data-i18n="tabOwned">Moje nákupy</span> <span class="tab-count" id="countOwned"></span>
-      </button>
-      <button type="button" class="tab" role="tab" id="tab-data-button" aria-controls="tab-data" data-tab="data">
-        <span data-i18n="tabData">Uložená data</span> <span class="tab-count" id="countData"></span>
-      </button>
-      <button type="button" class="tab" role="tab" id="tab-log-button" aria-controls="tab-log" data-tab="log">
-        <span data-i18n="tabLog">Logy běhů</span> <span class="tab-count" id="countLog"></span>
-      </button>
-    </div>
-
+    <div id="viewData" hidden>
     <section class="tab-panel" id="tab-lists" role="tabpanel" aria-labelledby="tab-lists-button">
       <p class="note" style="margin: 0 0 6px" data-i18n="listsNote">
         Nákupní seznamy, které se kontrolují na pozadí. Hlídání se zapíná v popupu na otevřeném seznamu. Kliknutím na řádek seznamu
@@ -1223,6 +1617,13 @@
         <span class="saved" id="ownedInfo"></span>
       </div>
       <div class="note" id="ownedSummary"></div>
+      <!-- Dochází vám? Opakovaně kupované zboží, které podle rytmu nákupů brzy dojde (options-owned.js renderOwnedRestock) -->
+      <details class="owned-restock" id="ownedRestock" open hidden>
+        <summary id="ownedRestockTitle"></summary>
+        <ul id="ownedRestockList"></ul>
+      </details>
+      <!-- Odhad AlzaPlus+ z nákupů a historie cen (options-owned.js renderOwnedApplus) -->
+      <div class="note owned-applus" id="ownedApplus" hidden></div>
       <details class="owned-spending" id="ownedSpending" open hidden>
         <summary data-i18n="ownedSpending">Přehled výdajů v grafu</summary>
         <div id="ownedSpendingChart"></div>
@@ -1234,8 +1635,89 @@
         </details>
       </details>
       <div class="owned-selection" id="ownedSelection" role="status" hidden></div>
+      <!-- Výdaje vybraných nákupů podle kategorií a úspora proti běžné ceně (options-owned.js renderOwnedCategories) -->
+      <details class="owned-categories" id="ownedCategories" hidden>
+        <summary id="ownedCategoriesTitle"></summary>
+        <p class="note" id="ownedSavings" style="margin: 6px 0"></p>
+        <div id="ownedCategoriesTable"></div>
+      </details>
       <div id="ownedTable"></div>
       <div class="pager" id="ownedPager"></div>
+    </section>
+
+    <section class="tab-panel stored" id="tab-codes" role="tabpanel" aria-labelledby="tab-codes-button" hidden>
+      <p class="note" style="margin: 0 0 6px" data-i18n="vouchersNote">
+        Peněženka poukazů: slevové kódy a dárkové poukazy, které jste dostali (omluva za zpoždění, dárek, soutěž). V košíku na Alze
+        vám je rozšíření nabídne k vložení a před koncem platnosti připomene. Použitý poukaz pozná z objednávky. Zůstávají jen ve vašem prohlížeči.
+      </p>
+      <!-- Přidání poukazu: text e-mailu se rozebere (AlzaCore.parseVoucherText) a vyplní políčka pod ním -->
+      <form id="voucherForm" class="voucher-form" autocomplete="off">
+        <textarea id="voucherPaste" rows="3" placeholder="Sem vložte text e-mailu s poukazem – kód, částka a platnost se vyplní samy" data-i18n-placeholder="voucherPaste"></textarea>
+        <div class="voucher-fields">
+          <label><span data-i18n="voucherCode">Kód</span> <input type="text" name="code" maxlength="50" required /></label>
+          <label
+            ><span data-i18n="voucherValue">Hodnota</span>
+            <span class="voucher-value"
+              ><input type="number" name="value" min="0.01" step="0.01" required />
+              <select name="unit">
+                <option value="alza_cz">Kč · alza.cz</option>
+                <option value="alza_sk">€ · alza.sk</option>
+                <option value="alza_hu">Ft · alza.hu</option>
+                <option value="percent">%</option>
+              </select></span
+            ></label
+          >
+          <label data-percent-domain hidden
+            ><span data-i18n="voucherDomain">Alza</span>
+            <select name="domain">
+              <option value="alza_cz">alza.cz</option>
+              <option value="alza_sk">alza.sk</option>
+              <option value="alza_hu">alza.hu</option>
+            </select></label
+          >
+          <label><span data-i18n="voucherUntil">Platí do</span> <input type="date" name="until" /></label>
+          <label><span data-i18n="voucherMinOrder">Min. objednávka</span> <input type="number" name="minOrder" min="0" step="1" /></label>
+          <label class="voucher-note"><span data-i18n="voucherNoteLabel">Poznámka</span> <input type="text" name="note" maxlength="200" /></label>
+          <!-- Text tlačítka řídí options-vouchers.js přes data-i18n (voucherAdd / voucherSave při úpravě) – přežije změnu jazyka -->
+          <button type="submit" id="voucherAdd" data-i18n="voucherAdd">Přidat poukaz</button>
+          <button type="button" id="voucherCancel" data-i18n="voucherCancel" hidden>Zrušit úpravu</button>
+          <span class="saved" id="voucherInfo" role="status"></span>
+        </div>
+      </form>
+      <div class="buttons">
+        <select id="voucherFilter">
+          <option value="active" data-i18n="voucherFilterActive">k použití</option>
+          <option value="all" data-i18n="voucherFilterAll">všechny</option>
+          <option value="done" data-i18n="voucherFilterDone">použité a prošlé</option>
+        </select>
+      </div>
+      <div id="vouchersTable"></div>
+      <h3 class="section-title" data-i18n="productCodesTitle">Slevové kódy u produktů</h3>
+      <p class="note" style="margin: 0 0 6px" data-i18n="productCodesNote">
+        Kódy, které Alza nabízí u produktů, jež jste si prohlédli („Koupit s kódem“). Ukládají se samy, platí jen pro daný produkt a
+        po 30 dnech, kdy je nevidíme, se mažou.
+      </p>
+      <div id="productCodesTable"></div>
+    </section>
+
+    <!-- Skryté ve výpisech (options-hidden.js): značky a produkty skryté tlačítkem na dlaždici výpisu, s možností je vrátit.
+         Nadpisy s počtem a tabulky doplní renderHidden; prázdná skupina se schová -->
+    <section class="tab-panel stored" id="tab-hidden" role="tabpanel" aria-labelledby="tab-hidden-button" hidden>
+      <p class="note" style="margin: 0 0 6px" data-i18n="hiddenNote">
+        Produkty a značky, které jste skryli ve výpisech kategorií a ve vyhledávání. Skrývají se tlačítkem na dlaždici produktu; tady
+        je vrátíte zpět.
+      </p>
+      <p class="empty" id="hiddenEmpty" data-i18n="hiddenEmpty" hidden>
+        Zatím nic skrytého. Produkt nebo značku skryjete tlačítkem „Skrýt“ u produktu ve výpisu kategorie nebo ve vyhledávání.
+      </p>
+      <div id="hiddenBrands" hidden>
+        <h3 class="section-title" id="hiddenBrandsTitle"></h3>
+        <div id="hiddenBrandsTable"></div>
+      </div>
+      <div id="hiddenProducts" hidden>
+        <h3 class="section-title" id="hiddenProductsTitle"></h3>
+        <div id="hiddenProductsTable"></div>
+      </div>
     </section>
 
     <section class="tab-panel stored" id="tab-data" role="tabpanel" aria-labelledby="tab-data-button" hidden>
@@ -1273,13 +1755,9 @@
       <div class="pager" id="dataPager"></div>
     </section>
 
-    <section class="tab-panel" id="tab-log" role="tabpanel" aria-labelledby="tab-log-button" hidden>
-      <p class="note" style="margin: 0 0 6px" data-i18n="logNote">
-        Posledních 50 kontrol na pozadí i ručních. Kliknutím na řádek běhu uvidíte, co se u kterého produktu změnilo nebo co se
-        nepovedlo.
-      </p>
-      <div id="watchLog" class="watch-log"></div>
-    </section>
+    </div>
+      </main>
+    </div>
 
     <script src="../shared/core.js"></script>
     <script src="../shared/icons.js"></script>
@@ -1293,6 +1771,7 @@
     <script src="../content/price-card.js"></script>
     <script src="../content/basket-codes.js"></script>
     <script src="../content/basket-insights.js"></script>
+    <script src="../content/basket-vouchers.js"></script>
     <script src="../content/history.js"></script>
     <script src="../content/targets.js"></script>
     <script src="../content/list-toolbar.js"></script>
@@ -1305,5 +1784,7 @@
     <script src="options-backup.js"></script>
     <script src="options.js"></script>
     <script src="options-owned.js"></script>
+    <script src="options-vouchers.js"></script>
+    <script src="options-hidden.js"></script>
   </body>
 </html>

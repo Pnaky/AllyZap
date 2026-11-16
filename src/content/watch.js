@@ -42,15 +42,30 @@ Object.assign(AlzaPriceTracker, {
     };
   },
 
-  async syncWatchedList(listId) {
+  // Prázdná stránka patří hlídanému seznamu: uživatel je přihlášený a vybraná záložka se jmenuje jako uložený seznam.
+  // Adresa s listId hlídaného seznamu totiž může ukazovat cizí prázdnou záložku „(0)“ – jiný účet, odhlášení,
+  // smazaný seznam, pomalé přepnutí záložek. Pak se nic nepřepisuje (obsah seznamu doplní kontrola na pozadí z API)
+  isOwnEmptyList(existing) {
+    if (AlzaCore.getLoginState(document) !== true) return false;
+    // Uložené jméno je ze záložky, nebo z API seznamu (kontrola na pozadí) – mezery a velikost písmen nerozhodují
+    const normalize = (name) => String(name || "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+    const tabName = normalize(this.getSelectedListName());
+    return tabName !== "" && tabName === normalize(existing?.name);
+  },
+
+  // allowEmpty: seznam je opravdu prázdný (záložka ukazuje „(0)“ i po ustálení stránky – reloadPrices) – hlídaný
+  // seznam se vyprázdní, ale jen přihlášenému a když záložka patří tomuto seznamu (isOwnEmptyList); jinak prázdný
+  // DOM nic nepřepíše
+  async syncWatchedList(listId, { allowEmpty = false } = {}) {
     const storageKey = AlzaCore.storageKeys.watchLists;
     const key = this.getWatchKey(listId);
     const existing = (await this.getStorageData(storageKey))[storageKey]?.[key];
     if (!existing) return;
 
     const list = this.buildWatchedList(listId, existing);
-    // Prázdný seznam v DOM spíš znamená nedokončené vykreslení než smazání všech položek
-    if (Object.keys(list.products).length === 0) return;
+    // Prázdný seznam v DOM spíš znamená nedokončené vykreslení než smazání všech položek – kromě potvrzené nuly
+    if (Object.keys(list.products).length === 0 && !(allowEmpty && this.getSelectedListCount() === 0)) return;
+    if (Object.keys(list.products).length === 0 && !this.isOwnEmptyList(existing)) return;
     // Pojistka proti položkám jiného seznamu (přepínání záložek): počet položek na stránce musí sedět
     // s počtem u vybrané záložky, jinak raději nic nepřepsat – synchronizuje se při dalším otevření
     const tabCount = this.getSelectedListCount();

@@ -235,6 +235,22 @@ test("getDiscountWarning: sleva vyšší než nejnižší cena za 30 dní", () =
   assert.equal(AlzaCore.getDiscountWarning(entries, { original: 1200, special: 880 }, NOW), null);
 });
 
+test("getDiscountWarning / getLowestInWindow: cashback a výkup nejsou prodejní cena", () => {
+  // Před 20 dny: akce 1000 + cashback 850; teď akce 1000 (cashback skončil)
+  const entries = [
+    { t: NOW - 20 * DAY, s: NOW - 10 * DAY - 1000, p: { original: 1200, special: 1000, cashback: 850 }, a: "in" },
+    { t: NOW - 10 * DAY, s: NOW, p: { original: 1200, special: 1000 }, a: "in" },
+  ];
+  assert.equal(AlzaCore.getLowestInWindow(entries, 30, NOW).value, 1000);
+  assert.equal(AlzaCore.getDiscountWarning(entries, { original: 1200, special: 1000 }, NOW), null);
+  // Teď jen běžná cena a výkup – není to sleva
+  assert.equal(AlzaCore.getDiscountWarning(history([[25, 900], [10, 1000]]), { original: 1000, scrappage: 800 }, NOW), null);
+  // Aktuální cena v upozornění je cena k zaplacení, ne s cashbackem
+  const warning = AlzaCore.getDiscountWarning(history([[25, 900], [10, 1000]]), { original: 1200, special: 1000, cashback: 700 }, NOW);
+  assert.equal(warning.value, 900);
+  assert.equal(warning.current, 1000);
+});
+
 test("getStrikethroughWarning: přeškrtnutá cena, za kterou se nikdy neprodávalo", () => {
   const entries = history([[60, 1000], [0, 900]]);
   const warning = AlzaCore.getStrikethroughWarning(entries, { original: 1500, special: 900 }, NOW);
@@ -277,6 +293,9 @@ test("parseUnitPrice, getPackCount, parseVariantSize", () => {
   assert.deepEqual(plain(AlzaCore.parseVariantSize("500 g")), { amount: 0.5, unit: "kg" });
   assert.deepEqual(plain(AlzaCore.parseVariantSize("Sparkle 120 ks")), { amount: 120, unit: "ks" });
   assert.deepEqual(plain(AlzaCore.parseVariantSize("2× 60 ks")), { amount: 120, unit: "ks" });
+  assert.deepEqual(plain(AlzaCore.parseVariantSize("2 × 3 × 4 ks")), { amount: 24, unit: "ks" });
+  assert.deepEqual(plain(AlzaCore.parseVariantSize("2 balení po 60 ks")), { amount: 120, unit: "ks" });
+  assert.equal(AlzaCore.parseVariantSize("20 × 30 × 40 cm"), null); // Rozměry, ne délka
   assert.deepEqual(plain(AlzaCore.parseVariantSize("50 cm")), { amount: 0.5, unit: "m" });
   assert.equal(AlzaCore.parseVariantSize("černá"), null);
 });
@@ -492,35 +511,41 @@ test("removeQuantityTierEntries: smaže ceny „od …“ z výpisu (nejvyšší
 
 // === Připomínka cashbacku ===
 const endOfDay = (year, month, day) => new Date(year, month - 1, day, 23, 59, 59).getTime();
+// Lhůta registrace pro nákup v čase boughtAt přímo z textu stránky akce – stejně jako rozšíření (readCashbackTerms +
+// getCashbackDates); zkratka AlzaCore.parseCashbackTerms jen pro testy byla z jádra odstraněna (audit 2026-11-16)
+const parseCashbackTerms = (text, title = null, boughtAt = Date.now(), lang = null) => {
+  const { registerFrom, registerUntil } = AlzaCore.getCashbackDates(AlzaCore.readCashbackTerms(text, title, boughtAt, lang), boughtAt);
+  return { registerFrom, registerUntil };
+};
 
 test("parseCashbackTerms: lhůta registrace z textu stránek akcí (Canon, Panasonic, OM System, Fujifilm, Sony)", () => {
   const canon =
     "Stačí nakoupit u vybraného partnera a zaregistrovat svůj nákup – a pokud k produktu napíšete recenzi, získáte navíc další cashback. Termín akce Nákup v období: 12. 10. 2026 – 31. 12. 2026 Registrace nejpozději do: 31. 01. 2027 Canon Kalkulačka. Správně vyplňte a odešlete online registrační formulář (včetně platného sériového čísla) nejpozději do 31. 1. 2027. Po ověření žádosti vám společnost Canon zašle peníze přímo na váš bankovní účet (do 28 dnů od schválení).";
-  assert.deepEqual(plain(AlzaCore.parseCashbackTerms(canon, null, NOW)), { registerFrom: null, registerUntil: endOfDay(2027, 1, 31) });
+  assert.deepEqual(plain(parseCashbackTerms(canon, null, NOW)), { registerFrom: null, registerUntil: endOfDay(2027, 1, 31) });
 
   const panasonic =
     "Platnost nákupu: 20. 08. – 13. 11. 2026 Registrace: 19. 09. 2026 – 15. 01. 2027 Pro vybrané modely. Zakupte vybranou techniku v období od 20. 8. do 13. 11. 2026. Počkejte minimálně 30 dní od data nákupu. Zaregistrujte svůj nákup v období od 19. 9. 2026 do 15. 1. 2027.";
-  assert.deepEqual(plain(AlzaCore.parseCashbackTerms(panasonic, null, NOW)), { registerFrom: NOW + 30 * DAY, registerUntil: endOfDay(2027, 1, 15) });
+  assert.deepEqual(plain(parseCashbackTerms(panasonic, null, NOW)), { registerFrom: NOW + 30 * DAY, registerUntil: endOfDay(2027, 1, 15) });
 
   const om = "Nákup v období: 08. 10. 2026 – 01. 11. 2026 Žádosti o cashback do: 15. 11. 2026 Jak získat cashback?";
-  assert.equal(AlzaCore.parseCashbackTerms(om, null, NOW).registerUntil, endOfDay(2026, 11, 15));
+  assert.equal(parseCashbackTerms(om, null, NOW).registerUntil, endOfDay(2026, 11, 15));
 
   const fuji = "Kdy registrovat? Žádost o cashback lze podat nejdříve 4 týdny od data nákupu. Kde registrovat? Registrace probíhá online.";
-  assert.deepEqual(plain(AlzaCore.parseCashbackTerms(fuji, null, NOW)), { registerFrom: NOW + 28 * DAY, registerUntil: null });
+  assert.deepEqual(plain(parseCashbackTerms(fuji, null, NOW)), { registerFrom: NOW + 28 * DAY, registerUntil: null });
 
   const sony =
     "Kupte jeden z vybraných modelů v období od 1. 10. 2026 do 31. 1. 2027. Zaregistrujte svůj nákup a podejte žádost. Všechny formuláře žádostí předložené v rámci akce musí být obdrženy nejpozději do půlnoci dne 28. 2. 2027.";
-  assert.equal(AlzaCore.parseCashbackTerms(sony, null, NOW).registerUntil, endOfDay(2027, 2, 28));
+  assert.equal(parseCashbackTerms(sony, null, NOW).registerUntil, endOfDay(2027, 2, 28));
 
   // Lhůta od nákupu; text bez lhůty
-  assert.equal(AlzaCore.parseCashbackTerms("Zaregistrujte nákup nejpozději do 30 dnů od data nákupu.", null, NOW).registerUntil, NOW + 30 * DAY);
-  assert.deepEqual(plain(AlzaCore.parseCashbackTerms("Akce byla ukončena.", null, NOW)), { registerFrom: null, registerUntil: null });
+  assert.equal(parseCashbackTerms("Zaregistrujte nákup nejpozději do 30 dnů od data nákupu.", null, NOW).registerUntil, NOW + 30 * DAY);
+  assert.deepEqual(plain(parseCashbackTerms("Akce byla ukončena.", null, NOW)), { registerFrom: null, registerUntil: null });
 });
 
 test("parseCashbackTerms: na stránce s víc akcemi jen text od názvu akce", () => {
   const text = "Letní akce Registrace nejpozději do 15. 11. 2026. Zimní Cashback Canon Registrace nejpozději do: 31. 01. 2027";
-  assert.equal(AlzaCore.parseCashbackTerms(text, null, NOW).registerUntil, endOfDay(2026, 11, 15));
-  assert.equal(AlzaCore.parseCashbackTerms(text, "Zimní Cashback Canon", NOW).registerUntil, endOfDay(2027, 1, 31));
+  assert.equal(parseCashbackTerms(text, null, NOW).registerUntil, endOfDay(2026, 11, 15));
+  assert.equal(parseCashbackTerms(text, "Zimní Cashback Canon", NOW).registerUntil, endOfDay(2027, 1, 31));
 });
 
 test("updateCashbackRegistry: cashback s podmínkami, vrácená částka, záznam zůstane i po konci akce", () => {
@@ -1004,4 +1029,67 @@ test("getWarrantyReminders: jen dražší zboží s načteným detailem, které 
   const reminders = AlzaCore.getWarrantyReminders(owned, now);
   assert.deepEqual(plain(reminders.map(({ key }) => key)), ["eura", "drahe"]); // nejdřív dřívější konec
   assert.equal(reminders[1].daysLeft, 9);
+});
+
+test("getPurchaseDrop: jen cashback bez ceny k zaplacení není zlevnění", () => {
+  const now = Date.UTC(2026, 10, 12);
+  const purchase = { price: 1000, returnUntil: now + 5 * AlzaCore.dayMs, domain: "alza_cz" };
+  assert.equal(AlzaCore.getPurchaseDrop(purchase, { cashback: 700 }, now), null);
+  assert.equal(AlzaCore.getPurchaseDrop(purchase, { original: 900, cashback: 700 }, now).lowest, 900);
+});
+
+test("Audit #4 (2026-11-12): úspora za kusy v centech, sleva přesně v procentech, neexistující datum", () => {
+  // Úspora za vyšší stupeň množstevní slevy se nezaokrouhluje na celá eura
+  assert.equal(AlzaCore.getNextQuantityTier([[1, 1, 1], [2, 99, 0.9]], 1, 1).saving, 0.2);
+  // 6,30 → 4,41 € je přesně 30 %, 5,05 → 4,04 € přesně 20 %; 19,6 % zůstane 19
+  assert.equal(AlzaCore.getListingDiscount({ original: 6.3, special: 4.41 }).percent, 30);
+  assert.equal(AlzaCore.getListingDiscount({ original: 5.05, special: 4.04 }).percent, 20);
+  assert.equal(AlzaCore.getListingDiscount({ original: 1000, special: 804 }).percent, 19);
+  // 31. 2. se nepřevede na 3. 3. – zahodí se; 28. 2. platí
+  const ref = Date.UTC(2026, 10, 10);
+  assert.equal(AlzaCore.findTermDates("Registrace do 31. 2. 2027.", ref).length, 0);
+  const valid = new Date(AlzaCore.findTermDates("Registrace do 28. 2. 2027.", ref)[0].time);
+  assert.deepEqual([valid.getFullYear(), valid.getMonth(), valid.getDate()], [2027, 1, 28]);
+});
+
+test("removeQuantityTierEntries: záznamy po opravě (2026.11.9) a záznamy s přeškrtnutou cenou zůstanou", () => {
+  const tiers = [[1, 1, 89], [2, 2, 83], [3, 100000, 76]];
+  const after = AlzaCore.quantityTierFixedAt + AlzaCore.dayMs;
+  const entries = [
+    { t: after, s: after + 1, p: { original: 89 }, a: "in" },
+    { t: after + 2, s: after + 3, p: { original: 76 }, a: "in" },
+    { t: 3, s: 4, p: { special: 76, original: 89 }, a: "in" },
+  ];
+  assert.equal(AlzaCore.removeQuantityTierEntries(entries, tiers), 0);
+  assert.equal(entries.length, 3);
+});
+
+test("getPriceVerdict / getLastYearOutlook: obvyklá cena bez cashbacku a výkupu", () => {
+  // 60 dní běžná cena 1000 s cashbackem (900), posledních 10 dní akce 950 bez cashbacku
+  const entries = [
+    { t: NOW - 60 * DAY, s: NOW - 10 * DAY - 1000, p: { original: 1000, cashback: 900 }, a: "in" },
+    { t: NOW - 10 * DAY, s: NOW, p: { original: 1100, special: 950 }, a: "in" },
+  ];
+  const verdict = AlzaCore.getPriceVerdict(entries, 950, NOW);
+  assert.equal(verdict.typical, 1000);
+  assert.equal(verdict.lowest, 950);
+  assert.equal(AlzaCore.getPlausiblePayNowPrice({ original: 1000, cashback: 900 }), 1000);
+});
+
+test("mergePriceRecord: minimum a prodejní maximum bez cashbacku a výkupu", () => {
+  const record = AlzaCore.mergePriceRecord({}, { original: 93320, blackfriday: 74990, cashback: 64990 }, "list1", 1000);
+  assert.equal(record.maxLowestPrice.value, 74990);
+  assert.equal(record.minPrice.value, 74990); // i minimum jen z cen k zaplacení
+});
+
+test("getLaterRefundType / withLaterRefundNote: cena platí jen s cashbackem / výkupem", () => {
+  assert.equal(AlzaCore.getLaterRefundType({ original: 1000, cashback: 900 }), "cashback");
+  assert.equal(AlzaCore.getLaterRefundType({ original: 1000, scrappage: 800, cashback: 900 }), "scrappage");
+  assert.equal(AlzaCore.getLaterRefundType({ original: 1000, special: 850, cashback: 900 }), null);
+  assert.equal(AlzaCore.getLaterRefundType(null), null);
+  assert.equal(AlzaCore.withLaterRefundNote("cz", "900 Kč", { original: 1000, cashback: 900 }), "900 Kč s cashbackem");
+  assert.equal(AlzaCore.withLaterRefundNote("en", "900 Kč", { original: 1000 }), "900 Kč");
+  // Ikona cíle se pozná i s poznámkou
+  const text = AlzaCore.translate("cz", "notifyTargetReached", "950 Kč", AlzaCore.withLaterRefundNote("cz", "900 Kč", { original: 1000, cashback: 900 }));
+  assert.equal(AlzaCore.getChangeIcon(text), "target");
 });

@@ -51,6 +51,8 @@ const AlzaBrowsing = {
     if (!enabled) {
       this.state.observer?.disconnect();
       this.state.observer = null;
+      // Neuložená pozorování se zahodí – i jejich podpis, jinak by je po zapnutí scan přeskočil
+      this.state.pending.forEach((_, key) => this.state.seen.delete(key));
       this.state.pending.clear();
       return;
     }
@@ -83,7 +85,7 @@ const AlzaBrowsing = {
         this.state.seen.set(key, signature);
         this.state.pending.set(key, product);
       } catch (error) {
-        console.error("Alza Price Insight – procházení:", error);
+        console.error("AllyZap – procházení:", error);
       }
     });
     if (this.state.pending.size > 0) this.scheduleFlush();
@@ -123,7 +125,7 @@ const AlzaBrowsing = {
   rememberProduct({ url, name, image }) {
     if (!this.state.domainKey || !AlzaCore.isAlzaUrl(url)) return;
     const key = AlzaCore.getProductKey(this.state.domainKey, url);
-    this.state.pending.set(key, { url, name, image: AlzaCore.isAlzaImageUrl(image) ? image : null, prices: null, availability: null });
+    this.state.pending.set(key, { url, name, image: AlzaCore.isAlzaImageUrl(image) ? image : null, prices: null, availability: null, opened: true });
     this.scheduleFlush();
   },
 
@@ -139,7 +141,7 @@ const AlzaBrowsing = {
     this.state.pending.clear();
     this.state.queue = this.state.queue
       .then(() => this.write(batch))
-      .catch((error) => console.error("Alza Price Insight – uložení cen z procházení:", error));
+      .catch((error) => console.error("AllyZap – uložení cen z procházení:", error));
     return this.state.queue;
   },
 
@@ -180,4 +182,4 @@ const AlzaBrowsing = {
   },
 };
 
-AlzaBrowsing.init().catch((error) => console.error("Alza Price Insight – procházení:", error));
+AlzaBrowsing.init().catch((error) => console.error("AllyZap – procházení:", error));

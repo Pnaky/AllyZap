@@ -3,23 +3,23 @@
 // Texty změn a problémů z kontroly na pozadí jsou už uložené v jazyce domény produktu.
 const POPUP_TEXTS = {
   cz: {
-    title: "Alza Price Insight",
+    title: "AllyZap",
     showProducts: "Zobrazit produkty",
     noProducts: "Žádné produkty",
     cleanupText: "{0} produktů už přes 3 měsíce nehlídáte ani neotevíráte – navrhujeme je smazat.",
     cleanupHint: "Produkty, které nejsou v žádném hlídaném seznamu, nehlídáte z detailu, nemají cílovou cenu a přes 3 měsíce se nekontrolovaly ani neotevřely (uložené při procházení přes rok). Smaže se jejich historie cen a uložené ceny – v nastavení si je nejdřív prohlédnete a smazání potvrdíte.",
     cleanupReview: "Prohlédnout a smazat",
     cleanupSnooze: "Připomenout za měsíc",
-    openOptionsTitle: "Nastavení, hlídané produkty, cílové ceny, záloha",
+    openOptionsTitle: "Nastavení – sledování, notifikace, výpisy kategorií, záloha",
+    openData: "Moje data",
+    openDataTitle: "Hlídané seznamy a produkty, Moje nákupy, kódy a poukazy, uložená data",
     newsTitle: "Co je nového",
     newsBadge: "Novinky",
     changes: "Změny cen",
     changesNew: "Nové změny cen ({0})",
     changesRecent: "Poslední změny cen",
-    codesTitle: "Slevové kódy ({0})",
-    codeWithPrice: "s kódem {0}",
-    codeCopy: "Kopírovat",
-    codeCopied: "Zkopírováno",
+    codesLink: "Slevové kódy u produktů: {0}",
+    codesLinkVouchers: "Poukazy k použití: {0} · kódy u produktů: {1}",
     cashbackTitle: "Cashback k registraci ({0})",
     cashbackRefund: "až {0} zpět",
     cashbackUntil: "registrace do {0}",
@@ -35,7 +35,6 @@ const POPUP_TEXTS = {
     runNow: "Zkontrolovat",
     runNowTitle: "Zkontrolovat hlídané produkty teď",
     listSynced: "Synchronizováno {0}",
-    openAlzaTitle: "Otevřít {0}",
     listSummary: "Za posledních 7 dní: zlevnilo {0}, zdražilo {1} (nejnižší cena)",
     listNoChanges: "beze změn",
     actionFailed: "Nepovedlo se: {0}",
@@ -45,25 +44,30 @@ const POPUP_TEXTS = {
     noRunYet: "Zatím neproběhla žádná kontrola",
     nextRun: "Další kontrola {0}",
     pending: "Odloženo do konce tichých hodin: {0}",
+    pendingRetry: "Nedoručené notifikace: {0} – za pár minut to zkusíme znovu",
+    alertSince: "Ceny se nekontrolují od {0}.",
+    alertSinceDomain: "Ceny na {0} se nekontrolují od {1}.",
+    alertLogin: "Přihlásit se na Alze",
+    alertRetry: "Zkontrolovat znovu",
   },
   sk: {
-    title: "Alza Price Insight",
+    title: "AllyZap",
     showProducts: "Zobraziť produkty",
     noProducts: "Žiadne produkty",
     cleanupText: "{0} produktov už viac ako 3 mesiace nesledujete ani neotvárate – navrhujeme ich zmazať.",
     cleanupHint: "Produkty, ktoré nie sú v žiadnom sledovanom zozname, nesledujete z detailu, nemajú cieľovú cenu a viac ako 3 mesiace sa nekontrolovali ani neotvorili (uložené pri prehliadaní viac ako rok). Zmaže sa ich história cien a uložené ceny – v nastaveniach si ich najprv pozriete a zmazanie potvrdíte.",
     cleanupReview: "Pozrieť a zmazať",
     cleanupSnooze: "Pripomenúť o mesiac",
-    openOptionsTitle: "Nastavenia, sledované produkty, cieľové ceny, záloha",
+    openOptionsTitle: "Nastavenia – sledovanie, notifikácie, výpisy kategórií, záloha",
+    openData: "Moje dáta",
+    openDataTitle: "Sledované zoznamy a produkty, Moje nákupy, kódy a poukazy, uložené dáta",
     newsTitle: "Čo je nové",
     newsBadge: "Novinky",
     changes: "Zmeny cien",
     changesNew: "Nové zmeny cien ({0})",
     changesRecent: "Posledné zmeny cien",
-    codesTitle: "Zľavové kódy ({0})",
-    codeWithPrice: "s kódom {0}",
-    codeCopy: "Kopírovať",
-    codeCopied: "Skopírované",
+    codesLink: "Zľavové kódy pri produktoch: {0}",
+    codesLinkVouchers: "Poukazy na použitie: {0} · kódy pri produktoch: {1}",
     cashbackTitle: "Cashback na registráciu ({0})",
     cashbackRefund: "až {0} späť",
     cashbackUntil: "registrácia do {0}",
@@ -79,7 +83,6 @@ const POPUP_TEXTS = {
     runNow: "Skontrolovať",
     runNowTitle: "Skontrolovať sledované produkty teraz",
     listSynced: "Synchronizované {0}",
-    openAlzaTitle: "Otvoriť {0}",
     listSummary: "Za posledných 7 dní: zlacnelo {0}, zdraželo {1} (najnižšia cena)",
     listNoChanges: "bez zmien",
     actionFailed: "Nepodarilo sa: {0}",
@@ -89,25 +92,30 @@ const POPUP_TEXTS = {
     noRunYet: "Zatiaľ neprebehla žiadna kontrola",
     nextRun: "Ďalšia kontrola {0}",
     pending: "Odložené do konca tichých hodín: {0}",
+    pendingRetry: "Nedoručené notifikácie: {0} – o pár minút to skúsime znova",
+    alertSince: "Ceny sa nekontrolujú od {0}.",
+    alertSinceDomain: "Ceny na {0} sa nekontrolujú od {1}.",
+    alertLogin: "Prihlásiť sa na Alze",
+    alertRetry: "Skontrolovať znova",
   },
   hu: {
-    title: "Alza Price Insight",
+    title: "AllyZap",
     showProducts: "Termékek megjelenítése",
     noProducts: "Nincsenek termékek",
     cleanupText: "{0} terméket több mint 3 hónapja nem figyel és nem nyitott meg – javasoljuk a törlésüket.",
     cleanupHint: "Olyan termékek, amelyek nincsenek figyelt listán, nem figyeli őket a termékoldalról, nincs célár, és több mint 3 hónapja nem ellenőrizték vagy nyitották meg őket (a böngészés közben mentetteket több mint egy éve). Az árelőzményeik és mentett áraik törlődnek – a beállításokban előbb megtekinti, majd megerősíti a törlést.",
     cleanupReview: "Megtekintés és törlés",
     cleanupSnooze: "Emlékeztessen egy hónap múlva",
-    openOptionsTitle: "Beállítások, figyelt termékek, célárak, biztonsági mentés",
+    openOptionsTitle: "Beállítások – figyelés, értesítések, kategórialisták, biztonsági mentés",
+    openData: "Saját adatok",
+    openDataTitle: "Figyelt listák és termékek, Vásárlásaim, kódok és kuponok, mentett adatok",
     newsTitle: "Újdonságok",
     newsBadge: "Újdonságok",
     changes: "Árváltozások",
     changesNew: "Új árváltozások ({0})",
     changesRecent: "Legutóbbi árváltozások",
-    codesTitle: "Kuponkódok ({0})",
-    codeWithPrice: "kóddal {0}",
-    codeCopy: "Másolás",
-    codeCopied: "Másolva",
+    codesLink: "Kuponkódok a termékeknél: {0}",
+    codesLinkVouchers: "Felhasználható kuponok: {0} · kódok a termékeknél: {1}",
     cashbackTitle: "Regisztrálandó cashback ({0})",
     cashbackRefund: "akár {0} vissza",
     cashbackUntil: "regisztrációs határidő: {0}",
@@ -123,7 +131,6 @@ const POPUP_TEXTS = {
     runNow: "Ellenőrzés",
     runNowTitle: "Figyelt termékek ellenőrzése most",
     listSynced: "Szinkronizálva: {0}",
-    openAlzaTitle: "{0} megnyitása",
     listSummary: "Az elmúlt 7 napban: {0} olcsóbb lett, {1} drágább (legalacsonyabb ár)",
     listNoChanges: "nincs változás",
     actionFailed: "Nem sikerült: {0}",
@@ -133,25 +140,30 @@ const POPUP_TEXTS = {
     noRunYet: "Még nem volt ellenőrzés",
     nextRun: "Következő ellenőrzés: {0}",
     pending: "A csendes órák végéig elhalasztva: {0}",
+    pendingRetry: "Nem kézbesített értesítések: {0} – néhány perc múlva újra megpróbáljuk",
+    alertSince: "Az árak ellenőrzése {0} óta szünetel.",
+    alertSinceDomain: "Az {0} árainak ellenőrzése {1} óta szünetel.",
+    alertLogin: "Bejelentkezés az Alzára",
+    alertRetry: "Ellenőrzés újra",
   },
   en: {
-    title: "Alza Price Insight",
+    title: "AllyZap",
     showProducts: "Show products",
     noProducts: "No products",
     cleanupText: "{0} products haven't been watched or opened for over 3 months – we suggest deleting them.",
     cleanupHint: "Products that aren't in any watched list, aren't watched from the product page, have no target price and haven't been checked or opened for over 3 months (products saved while browsing: over a year). Their price history and stored prices will be deleted – you review them in settings first and confirm the deletion.",
     cleanupReview: "Review and delete",
     cleanupSnooze: "Remind me in a month",
-    openOptionsTitle: "Settings, watched products, target prices, backup",
+    openOptionsTitle: "Settings – tracking, notifications, category listings, backup",
+    openData: "My data",
+    openDataTitle: "Watched lists and products, My purchases, codes and vouchers, stored data",
     newsTitle: "What's new",
     newsBadge: "What's new",
     changes: "Price changes",
     changesNew: "New price changes ({0})",
     changesRecent: "Recent price changes",
-    codesTitle: "Discount codes ({0})",
-    codeWithPrice: "with code {0}",
-    codeCopy: "Copy",
-    codeCopied: "Copied",
+    codesLink: "Discount codes on products: {0}",
+    codesLinkVouchers: "Vouchers to use: {0} · codes on products: {1}",
     cashbackTitle: "Cashback to register ({0})",
     cashbackRefund: "up to {0} back",
     cashbackUntil: "register by {0}",
@@ -167,7 +179,6 @@ const POPUP_TEXTS = {
     runNow: "Check now",
     runNowTitle: "Check watched products now",
     listSynced: "Synced {0}",
-    openAlzaTitle: "Open {0}",
     listSummary: "Last 7 days: {0} cheaper, {1} more expensive (lowest price)",
     listNoChanges: "no changes",
     actionFailed: "Failed: {0}",
@@ -177,6 +188,11 @@ const POPUP_TEXTS = {
     noRunYet: "No check has run yet",
     nextRun: "Next check {0}",
     pending: "Postponed until quiet hours end: {0}",
+    pendingRetry: "Undelivered notifications: {0} – we'll try again in a few minutes",
+    alertSince: "Prices have not been checked since {0}.",
+    alertSinceDomain: "Prices on {0} have not been checked since {1}.",
+    alertLogin: "Log in to Alza",
+    alertRetry: "Check again",
   },
 };
 
@@ -197,6 +213,7 @@ function t(key, ...params) {
 
 // Ikony před texty (src/shared/icons.js) – emoji v textech nejsou, ikonu přidá setText podle klíče textu
 const POPUP_ICONS = {
+  openData: "storage",
   cleanupText: "cleaning",
   cleanupReview: "cleaning",
   watchList: "bell",
@@ -206,6 +223,7 @@ const POPUP_ICONS = {
   running: "hourglass",
   nextRun: "schedule",
   pending: "moon",
+  pendingRetry: "bell-off",
 };
 
 function setText(element, key, ...params) {
@@ -227,17 +245,21 @@ function sendToBackground(message) {
   chrome.runtime.sendMessage(message).catch(() => {});
 }
 
-document.getElementById("openOptions").addEventListener("click", () => chrome.runtime.openOptionsPage());
+// Moje data = stránka rozšíření (výchozí pohled dat; otevřenou jen přepne), ozubené kolo = rovnou pohled nastavení
+document.getElementById("openData").addEventListener("click", () => chrome.runtime.openOptionsPage());
+document.getElementById("openOptions").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("src/options/options.html#s-") }));
+document.getElementById("codesLink").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("src/options/options.html#codes") }));
 
 // === Novinky po aktualizaci ===
-// Ikona v záhlaví otevře novinky v průvodci (#news); dokud uživatel neviděl novinky nainstalované verze, je zelená
-// s textem Novinky (background.js otevře novinky sám jen u vydání s novou volbou)
+// Zelená značka Novinky v záhlaví otevře novinky v průvodci (#news) – jen dokud uživatel neviděl novinky nainstalované
+// verze, jinak je schovaná (vždy jsou v nastavení: Co je nového; background.js otevře novinky sám jen u vydání s novou volbou)
 const NEWS_KEY = AlzaCore.storageKeys.news;
 
 async function renderNews() {
   const button = document.getElementById("openNews");
   const { [NEWS_KEY]: news } = await chrome.storage.local.get(NEWS_KEY);
   const unseen = AlzaCore.getReleaseNews(news?.seen, chrome.runtime.getManifest().version).length > 0;
+  button.hidden = !unseen;
   button.classList.toggle("unseen", unseen);
   button.querySelector(".news-label")?.remove();
   if (unseen) button.append(Object.assign(document.createElement("span"), { className: "news-label", textContent: t("newsBadge") }));
@@ -285,28 +307,6 @@ function createDomainBadge(domain, show) {
   return badge;
 }
 
-// Odkaz na Alzu: doména otevřené záložky, jinak hlavní Alza z nastavení (průvodce, nastavení), jinak prvního
-// hlídaného seznamu, jinak podle jazyka prohlížeče
-const UI_DOMAINS = { cz: "alza_cz", sk: "alza_sk", hu: "alza_hu", en: "alza_cz" };
-let primaryDomain = null;
-// Ikonou je favicona Alzy; když se nenačte (offline), zobrazí se doména
-function renderAlzaLink(lists) {
-  const domain =
-    activeDomain || primaryDomain || Object.values(lists).find((list) => AlzaCore.isKnownDomain(list?.domain))?.domain || UI_DOMAINS[ui.lang] || "alza_cz";
-  const origin = AlzaCore.domains[domain].origin;
-  const host = getHost(domain);
-  const link = document.getElementById("openAlza");
-  link.href = `${origin}/`;
-  link.title = t("openAlzaTitle", host);
-  if (link.dataset.origin === origin) return;
-  link.dataset.origin = origin;
-  const icon = document.createElement("img");
-  icon.alt = host;
-  icon.addEventListener("error", () => (link.textContent = `${host} ↗`));
-  icon.src = `${origin}/favicon-alza.ico`;
-  link.replaceChildren(icon);
-}
-
 // === Hlídání cen na pozadí ===
 const WATCH_LISTS_KEY = AlzaCore.storageKeys.watchLists;
 const TARGETS_KEY = AlzaCore.storageKeys.targets;
@@ -314,7 +314,7 @@ const WATCH_PRODUCTS_KEY = AlzaCore.storageKeys.watchProducts;
 const CLEANUP_KEY = AlzaCore.storageKeys.cleanup;
 const WATCH_STATE_KEY = AlzaCore.storageKeys.watchState;
 const CODES_KEY = AlzaCore.storageKeys.codes;
-const CODES_MAX_AGE_MS = 30 * AlzaCore.dayMs; // Trezor ukazuje kódy viděné za posledních 30 dní
+const VOUCHERS_KEY = AlzaCore.storageKeys.vouchers;
 const CASHBACK_REMINDERS_KEY = AlzaCore.storageKeys.cashbackReminders;
 const PURCHASES_KEY = AlzaCore.storageKeys.purchases;
 const SETTINGS_KEY = AlzaCore.storageKeys.settings;
@@ -368,7 +368,6 @@ async function renderWatch() {
   const state = data[WATCH_STATE_KEY] || {};
   const nextAlarm = await chrome.alarms.get("alzaWatchRun").catch(() => null);
 
-  renderAlzaLink(lists);
   const watchedProducts = Object.values(data[WATCH_PRODUCTS_KEY] || {}).filter(Boolean);
   // Poškozený záznam (null) nesmí shodit popup
   const validLists = Object.entries(lists).filter(([, list]) => list);
@@ -437,9 +436,17 @@ async function renderWatch() {
   const watchingPurchases = Boolean(settings.watchPurchases) && Object.values(data[PURCHASES_KEY] || {}).some((purchase) => purchase?.returnUntil > now);
   const watching = Object.keys(lists).length > 0 || targetCount > 0 || productCount > 0 || watchingPurchases;
   if (!state.running && watching && nextAlarm?.scheduledTime) addLine(t("nextRun", formatTime(nextAlarm.scheduledTime)), null, POPUP_ICONS.nextRun);
-  if (state.pendingNotifications?.length) addLine(t("pending", state.pendingNotifications.length), null, POPUP_ICONS.pending);
-  // Název produktu s problémem je odkaz – rychle se na produkt podívat
+  // Fronta notifikací: odložené v tichých hodinách a ty, které prohlížeč nepřijal (attempts = počet nepovedených
+  // doručení – background.js requeueNotifications; další pokus přijde za pár minut, ne až po tichých hodinách)
+  const queued = Array.isArray(state.pendingNotifications) ? state.pendingNotifications : [];
+  const undelivered = queued.filter((item) => item?.attempts > 0).length;
+  if (queued.length > undelivered) addLine(t("pending", queued.length - undelivered), null, POPUP_ICONS.pending);
+  if (undelivered > 0) addLine(t("pendingRetry", undelivered), null, POPUP_ICONS.pendingRetry);
+  const alerts = state.running ? [] : listAlerts(state.alert);
+  renderAlert(alerts);
+  // Název produktu s problémem je odkaz – rychle se na produkt podívat. Důvod přerušení je v upozornění nahoře
   (state.problems || []).forEach((problem) => {
+    if (alerts.some((alert) => alert.message === problem.message)) return;
     if (!problem.url || !AlzaCore.isAlzaUrl(problem.url)) {
       addLine(`${problem.name}: ${problem.message}`, "watch-problem", "warning");
       return;
@@ -455,6 +462,46 @@ async function renderWatch() {
   runWatchNowButton.disabled = Boolean(state.running) || !watching;
   renderChanges(state.recent || [], showDomains);
   renderCleanup(data[CLEANUP_KEY] || {});
+}
+
+// === Přerušená kontrola ===
+// Oranžový „!“ na ikoně: běh se přerušil (nepřihlášen, ceny bez DPH, Alza blokuje) a ceny se nesbírají. Nahoře,
+// ať je vidět bez posouvání; po odhlášení odkaz rovnou na přihlášení (stejný jako „Přihlásit se“ v záhlaví Alzy).
+// Odhlášení a ceny bez DPH se týkají jen jedné domény (ostatní se kontrolují dál) – text ji jmenuje. Víc důvodů
+// najednou (dvě odhlášené domény): první ve stavu jako alert, další v alert.others – každý má svůj box (kopie prvního)
+function listAlerts(alert) {
+  return alert ? [alert, ...(Array.isArray(alert.others) ? alert.others : [])].filter((item) => item?.message) : [];
+}
+
+function renderAlert(alerts) {
+  const notice = document.getElementById("watchAlert");
+  document.querySelectorAll(".watch-alert--more").forEach((element) => element.remove());
+  notice.hidden = alerts.length === 0;
+  let last = notice;
+  alerts.forEach((alert, index) => {
+    const box = index === 0 ? notice : notice.cloneNode(true);
+    // Části boxu podle id; kopie id mít nesmí (v dokumentu by byla dvakrát)
+    const [text, since, login, retry] = ["Text", "Since", "Login", "Retry"].map((name) => box.querySelector(`#watchAlert${name}`));
+    if (index > 0) {
+      [box, text, since, login, retry].forEach((element) => element.removeAttribute("id"));
+      box.classList.add("watch-alert--more");
+      last.after(box);
+      last = box;
+    }
+    text.textContent = alert.message;
+    AlzaIcons.prepend(text, "warning", { tone: true });
+    const perDomain = alert.reason !== "blocked" && AlzaCore.isKnownDomain(alert.domain);
+    if (perDomain) setText(since, "alertSinceDomain", getHost(alert.domain), formatTime(alert.since));
+    else setText(since, "alertSince", formatTime(alert.since));
+    const origin = AlzaCore.domains[alert.domain]?.origin;
+    login.hidden = alert.reason !== "notifyProblemNotLogged" || !origin;
+    login.onclick = () => origin && chrome.tabs.create({ url: `${origin}/external/login?inherit=false&state=${crypto.randomUUID()}` });
+    // Zprávu rovnou službě na pozadí – hlavní tlačítko Zkontrolovat může být zrovna vypnuté a jeho click() by neudělal nic
+    retry.onclick = () => {
+      runWatchNowButton.disabled = true;
+      sendToBackground({ action: "watchRunNow" });
+    };
+  });
 }
 
 // === Návrh čistky ===
@@ -598,88 +645,21 @@ function createProductPanel(products, showDomains = false) {
   return panel;
 }
 
-// Název produktu z adresy („…/oppo-reno-12-d123.htm“ → „oppo reno 12“). Špatné % v adrese nesmí shodit trezor
-function getNameFromUrl(url) {
-  const slug = new URL(url).pathname.split("/").pop().replace(/-d\d+\.htm$/, "").replace(/-/g, " ");
-  try {
-    return decodeURIComponent(slug);
-  } catch {
-    return slug;
-  }
-}
-
-// Trezor slevových kódů (AlzaCore.storageKeys.codes): produkt, kód, cena s kódem a Kopírovat – nejnovější kódy nahoře
+// Kódy a poukazy: jeden řádek s počtem poukazů z peněženky k použití (všechny Alzy) a slevových kódů u produktů
+// viděných za posledních codeSeenDays dní – klik otevře záložku Kódy a poukazy v nastavení. Bez obojího se schová
 async function renderCodes() {
-  const { [CODES_KEY]: registry = {}, [AlzaCore.storageKeys.browsed]: browsed = {}, [WATCH_PRODUCTS_KEY]: watched = {} } = await chrome.storage.local.get([
-    CODES_KEY,
-    AlzaCore.storageKeys.browsed,
-    WATCH_PRODUCTS_KEY,
-  ]);
+  const { [CODES_KEY]: registry = {}, [VOUCHERS_KEY]: vouchers = {} } = await chrome.storage.local.get([CODES_KEY, VOUCHERS_KEY]);
   const now = Date.now();
-  const codes = Object.entries(registry)
-    .filter(([, entry]) => entry?.code && AlzaCore.isAlzaUrl(entry.url) && now - (entry.seenAt || 0) < CODES_MAX_AGE_MS)
-    .sort(([, a], [, b]) => (b.since || 0) - (a.since || 0))
-    .slice(0, 30);
-  const section = document.getElementById("codes");
-  section.hidden = codes.length === 0;
-  if (codes.length === 0) return;
-  const toggle = document.getElementById("codesToggle");
-  toggle.textContent = t("codesTitle", codes.length);
-  if (!toggle.dataset.ready) {
-    toggle.dataset.ready = "1";
-    toggle.addEventListener("click", () => {
-      const open = toggle.getAttribute("aria-expanded") !== "true";
-      toggle.setAttribute("aria-expanded", String(open));
-      document.getElementById("codesList").hidden = !open;
-    });
-  }
-
-  document.getElementById("codesList").replaceChildren(
-    ...codes.map(([key, entry]) => {
-      const row = document.createElement("div");
-      row.className = "change";
-      const body = document.createElement("div");
-      body.className = "change-body";
-      const title = document.createElement("div");
-      title.className = "change-title";
-      const name = document.createElement("a");
-      name.textContent = browsed[key]?.name || watched[key]?.name || getNameFromUrl(entry.url);
-      name.title = name.textContent;
-      name.href = entry.url;
-      name.target = "_blank";
-      title.appendChild(name);
-      const line = document.createElement("div");
-      line.className = "code-line";
-      const pill = document.createElement("code");
-      pill.className = "code-pill";
-      pill.textContent = entry.code;
-      const price = document.createElement("span");
-      price.className = "code-price";
-      price.textContent = Number.isFinite(entry.price) ? t("codeWithPrice", AlzaCore.formatPrice(entry.price, entry.domain)) : "";
-      const copy = document.createElement("button");
-      copy.type = "button";
-      copy.className = "code-copy";
-      copy.textContent = t("codeCopy");
-      copy.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(entry.code);
-          copy.textContent = t("codeCopied");
-          setTimeout(() => (copy.textContent = t("codeCopy")), 1500);
-        } catch {
-          // Schránka nedostupná – kód aspoň označit, ať jde zkopírovat ručně (Ctrl+C)
-          const range = document.createRange();
-          range.selectNodeContents(pill);
-          const selection = window.getSelection();
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
-      });
-      line.append(pill, price, copy);
-      body.append(title, line);
-      row.appendChild(body);
-      return row;
-    })
-  );
+  const codes = Object.values(registry && typeof registry === "object" ? registry : {}).filter(
+    (entry) => entry?.code && AlzaCore.isAlzaUrl(entry.url) && now - (entry.seenAt || 0) < AlzaCore.codeSeenDays * AlzaCore.dayMs
+  ).length;
+  const active = Object.keys(AlzaCore.domains).reduce((sum, domain) => sum + AlzaCore.getActiveVouchers(vouchers, domain, now).length, 0);
+  const link = document.getElementById("codesLink");
+  link.hidden = codes === 0 && active === 0;
+  if (link.hidden) return;
+  link.replaceChildren();
+  AlzaIcons.prepend(link, "tag");
+  link.append(active > 0 ? t("codesLinkVouchers", active, codes) : t("codesLink", codes));
 }
 
 // Cashback k registraci (AlzaCore.storageKeys.cashbackReminders): koupené zboží s cashbackem, lhůta registrace,
@@ -748,7 +728,11 @@ async function renderCashbacks() {
       done.addEventListener("click", () => {
         done.disabled = true;
         // existingOnly: připomínku mezitím smazanou službou na pozadí (lhůta prošla) nevytvoří znovu
-        AlzaStore.run({ type: "patchMap", key: CASHBACK_REMINDERS_KEY, merge: { [key]: { done: true } }, existingOnly: true }).catch(showError);
+        AlzaStore.run({ type: "patchMap", key: CASHBACK_REMINDERS_KEY, merge: { [key]: { done: true } }, existingOnly: true }).catch((error) => {
+          // Zápis selhal – připomínka zůstává, tlačítko musí jít použít znovu
+          done.disabled = false;
+          showError(error);
+        });
       });
       line.appendChild(done);
       body.append(title, line);
@@ -849,7 +833,7 @@ runWatchNowButton.addEventListener("click", () => {
 });
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
-  if (area === "local" && changes[CODES_KEY]) renderCodes().catch(showError);
+  if (area === "local" && (changes[CODES_KEY] || changes[VOUCHERS_KEY])) renderCodes().catch(showError);
   if (area === "local" && (changes[CASHBACK_REMINDERS_KEY] || changes[SETTINGS_KEY])) renderCashbacks().catch(showError);
   if (area !== "local" || ![WATCH_LISTS_KEY, WATCH_STATE_KEY, TARGETS_KEY, WATCH_PRODUCTS_KEY, CLEANUP_KEY, PURCHASES_KEY, SETTINGS_KEY].some((key) => changes[key])) return;
   // Změny z kontroly doběhlé při otevřeném popupu (např. tlačítko Zkontrolovat) – zvýraznit a hned označit viděné
@@ -871,7 +855,6 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   const settings = await AlzaCore.getSettings();
   uiLanguage = AlzaCore.getUiLanguage(settings);
   ui = UI_LANGUAGES[uiLanguage];
-  primaryDomain = AlzaCore.getPrimaryDomain(settings);
   applyStaticTexts();
   renderNews().catch(showError);
 

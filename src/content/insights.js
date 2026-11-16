@@ -42,7 +42,7 @@ Object.assign(AlzaPriceTracker, {
 
     const warning = AlzaCore.getDiscountWarning(entries, priceMap);
     if (warning) {
-      const current = AlzaCore.getPlausibleMinPrice(priceMap);
+      const { current } = warning; // Cena k zaplacení – bez cashbacku a výkupu
       let text = this.translate(
         "discountWarningDetail",
         this.formatPrice(current),
@@ -134,7 +134,7 @@ Object.assign(AlzaPriceTracker, {
     if (!data.verdict || data.verdict.level === "usual") return;
 
     const high = data.verdict.level === "high";
-    const { label, hint } = this.getVerdictText(data.verdict, AlzaCore.getPlausibleMinPrice(data.priceMap));
+    const { label, hint } = this.getVerdictText(data.verdict, AlzaCore.getPlausiblePayNowPrice(data.priceMap));
     const marker = this.createEl(
       "span",
       `alza-price-tracker-verdict-marker alza-price-tracker-verdict-marker--${high ? "high" : "good"}`,
@@ -154,8 +154,8 @@ Object.assign(AlzaPriceTracker, {
     // Varování se v seznamu nezobrazují (řádek by byl přeplácaný) – slouží filtru v liště, detail je v dialogu
     data.discountWarning = AlzaCore.getDiscountWarning(entries, priceMap);
     data.strikethroughWarning = AlzaCore.getStrikethroughWarning(entries, priceMap);
-    data.verdict = AlzaCore.getPriceVerdict(entries, AlzaCore.getPlausibleMinPrice(priceMap));
-    data.saleCycle = AlzaCore.getSaleCycle(entries, AlzaCore.getPlausibleMinPrice(priceMap));
+    data.verdict = AlzaCore.getPriceVerdict(entries, AlzaCore.getPlausiblePayNowPrice(priceMap));
+    data.saleCycle = AlzaCore.getSaleCycle(entries, AlzaCore.getPlausiblePayNowPrice(priceMap));
     this.updateVerdictMarker(itemElement);
     const priceContainer = itemElement.querySelector(this.selectors.priceContainer);
     if (priceContainer) this.markSuspiciousPrices(priceContainer, AlzaCore.getSuspiciousPrices(entries, priceMap));

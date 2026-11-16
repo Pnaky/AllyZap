@@ -11,7 +11,7 @@
     check("background.js se přihlásil k onClicked / onClosed (bez pádu)", chrome.notifications.onClicked.hasListeners() && chrome.notifications.onClosed.hasListeners());
     await mock.until(() => mock.alarms.has("alzaWatchRun"));
     check("naplánovaná kontrola cen (alarm alzaWatchRun)", mock.alarms.has("alzaWatchRun"), JSON.stringify([...mock.alarms.keys()]));
-    check("ikona rozšíření nastavená (titulek, číslo)", mock.badge.some((entry) => entry.title === "Alza Price Insight"), JSON.stringify(mock.badge));
+    check("ikona rozšíření nastavená (titulek, číslo)", mock.badge.some((entry) => entry.title === "AllyZap"), JSON.stringify(mock.badge));
 
     // === Zkušební notifikace (tlačítko v průvodci a v nastavení) ===
     mock.native.length = 0;

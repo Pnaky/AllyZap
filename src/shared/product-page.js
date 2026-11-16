@@ -32,6 +32,7 @@ async function fetchProductPage(url) {
       packCount: AlzaCore.getDocumentPackCount(doc, prices),
       quantityTiers: AlzaCore.getDocumentQuantityTiers(doc),
       conditions: AlzaCore.getDocumentConditions(doc, url),
+      energy: AlzaCore.getDocumentEnergy(doc), // Cena provozu ve výpisech (televize – „Spočítat provoz“ v category.js)
     };
   } catch (error) {
     return { ok: false, status: 0, error: error?.name === "AbortError" ? "timeout" : String(error?.message || error) };

@@ -12,7 +12,9 @@ const OptionsData = (() => {
 
   // Klíče storageKeys v záloze (JSON). Připomínky cashbacku ano – lhůtu registrace už z Alzy znovu nezjistíme,
   // když akce skončí
-  const BACKUP_KEYS = [keys.watchLists, keys.watchProducts, keys.targets, keys.browsed, keys.settings, keys.cashbackReminders];
+  // Peněženka poukazů ano – poukazy zadal uživatel sám, z Alzy je znovu nezjistíme
+  // Poznámky a skryté produkty ano – zadal je uživatel
+  const BACKUP_KEYS = [keys.watchLists, keys.watchProducts, keys.targets, keys.browsed, keys.settings, keys.cashbackReminders, keys.vouchers, keys.notes, keys.hidden, keys.hiddenBrands];
 
   // Klíče mimo zálohu a proč
   const NOT_BACKED_UP = {
@@ -30,7 +32,9 @@ const OptionsData = (() => {
     [keys.owned]: "Moje nákupy – koupené zboží se znovu načte z archivu objednávek na Alze",
     [keys.ownedOrders]: "Moje nákupy – přehled objednávek se znovu načte z Alzy",
     [keys.ownedSync]: "Moje nákupy – stav načítání archivu; bez něj se archiv načte znovu",
+    [keys.ownedAccounts]: "Moje nákupy jiných účtů Alzy v tomto profilu – znovu se načtou z archivu objednávek na Alze",
     [keys.news]: "viděné novinky – patří k tomuto prohlížeči",
+    [keys.energy]: "mezipaměť spotřeby televizí a monitorů – načte se znovu ze stránek produktů",
   };
 
   // „Smazat všechna data“ nechá nastavení, log chyb (diagnostika, když se něco pokazí), záznam jednorázových
@@ -77,6 +81,8 @@ const OptionsData = (() => {
           ["since", "seenAt"].forEach((field) => {
             if (field in clean) clean[field] = toImportTime(clean[field]);
           });
+          // „Prohlédnuto“ jen s platným časem – jinak by se produkt označil jako prohlédnutý právě teď
+          if ("openedAt" in clean && !isImportTime(clean.openedAt)) delete clean.openedAt;
           return [AlzaCore.getProductKey(item.domain, item.url), clean];
         })
     );
@@ -113,6 +119,66 @@ const OptionsData = (() => {
     );
   }
 
+  // Peněženka poukazů (storageKeys.vouchers): jen poukazy, které projdou AlzaCore.sanitizeVoucher; klíč se složí znovu
+  // z domény a kódu (stejný poukaz dvakrát = jeden řádek). Časy v rozumných mezích (ručně upravená záloha, „until:
+  // 1e18“ = „Invalid Date“ v peněžence): platnost nejvýš VOUCHER_MAX_AHEAD_MS dopředu – jinak poukaz zůstane bez data
+  // konce (peníze se nezahazují); použití a vložení do košíku ne v budoucnosti (použitý zůstane použitý – čas teď,
+  // vložení se zahodí)
+  const VOUCHER_MAX_AHEAD_MS = 5 * 365 * AlzaCore.dayMs;
+  function sanitizeVouchers(value, now = Date.now()) {
+    return Object.fromEntries(
+      Object.values(value)
+        .map((item) => AlzaCore.sanitizeVoucher(item, now))
+        .filter(Boolean)
+        .map((voucher) => {
+          const clean = { ...voucher };
+          if ("until" in clean && !(clean.until <= now + VOUCHER_MAX_AHEAD_MS)) delete clean.until;
+          if ("usedAt" in clean) clean.usedAt = toImportTime(clean.usedAt, now);
+          if ("applied" in clean && !isImportTime(clean.applied, now)) delete clean.applied;
+          return [AlzaCore.getVoucherId(clean.domain, clean.code), clean];
+        })
+    );
+  }
+
+  // Poznámky k produktům: produkt Alzy s doménou, text do noteMaxLength
+  function sanitizeNotes(value, now = Date.now()) {
+    return Object.fromEntries(
+      Object.values(value)
+        .filter((item) => isProductOf(item) && typeof item.text === "string" && item.text.trim() && isOptionalString(item.name))
+        .map((item) => [
+          AlzaCore.getProductKey(item.domain, item.url),
+          { text: item.text.trim().slice(0, AlzaCore.noteMaxLength), url: item.url, domain: item.domain, name: item.name || null, at: toImportTime(item.at, now) },
+        ])
+    );
+  }
+
+  // Skryté produkty ve výpisech (storageKeys.hidden, tvar z listing-memory.js): produkt Alzy s doménou, záznam jen ze
+  // známých polí (nic dalšího ze zálohy se nepřevezme), název nejvýš HIDDEN_NAME_MAX_LENGTH znaků
+  const HIDDEN_NAME_MAX_LENGTH = 500;
+  function sanitizeHidden(value, now = Date.now()) {
+    return Object.fromEntries(
+      Object.values(value)
+        .filter((item) => isProductOf(item) && isOptionalString(item.name))
+        .map((item) => [
+          AlzaCore.getProductKey(item.domain, item.url),
+          { url: item.url, domain: item.domain, name: item.name ? item.name.slice(0, HIDDEN_NAME_MAX_LENGTH) : null, at: toImportTime(item.at, now) },
+        ])
+    );
+  }
+
+  // Skryté značky ve výpisech: klíč se složí znovu z uloženého názvu značky (AlzaCore.getBrandKey) – název je celá
+  // značka, i víceslovná („Mobile Origin“); bez písmene nebo příliš dlouhý se zahodí
+  const HIDDEN_BRAND_MAX_LENGTH = 80;
+  function sanitizeHiddenBrands(value, now = Date.now()) {
+    return Object.fromEntries(
+      Object.values(value)
+        .filter((item) => item && typeof item.name === "string")
+        .map((item) => ({ name: item.name.replace(/\s+/g, " ").trim(), at: item.at }))
+        .filter(({ name }) => name.length >= 2 && name.length <= HIDDEN_BRAND_MAX_LENGTH && /\p{L}/u.test(name))
+        .map(({ name, at }) => [AlzaCore.getBrandKey(name), { name, at: toImportTime(at, now) }])
+    );
+  }
+
   // Číselná nastavení: stejné rozsahy jako políčka formuláře (min / max v options.html – hlídá test); integer = celé
   // číslo (formulář zaokrouhluje). Cena elektřiny má jedno políčko pro tři nastavení (podle měny hlavní Alzy)
   const SETTING_RANGES = {
@@ -121,6 +187,7 @@ const OptionsData = (() => {
     energyYears: { min: 1, max: 30, integer: true },
     energyCyclesPerWeek: { min: 1, max: 21, integer: true },
     energyHoursPerDay: { min: 0.5, max: 24 },
+    monthlyBudget: { min: 0, max: 100000000, integer: true },
   };
 
   // Hodnota jedné volby z importu / formuláře, nebo undefined (neznámá volba, špatný typ, mimo rozsah)
@@ -172,21 +239,39 @@ const OptionsData = (() => {
     return createTextHider(sensitive)(result);
   }
 
-  // Funkce, která z textu odstraní citlivé texty (aspoň 3 znaky). Delší napřed – kratší text uvnitř delšího by ho rozbil
-  function createTextHider(sensitive) {
-    const texts = [...new Set((Array.isArray(sensitive) ? sensitive : []).filter((item) => typeof item === "string" && item.trim().length >= 3).map((item) => item.trim()))].sort(
-      (a, b) => b.length - a.length
-    );
-    return (text) => texts.reduce((result, item) => result.split(item).join("…"), String(text));
+  // Funkce, která z textu odstraní citlivé texty (aspoň 3 znaky) – bez ohledu na velikost písmen a na druh a počet
+  // mezer (kód poukazu malými písmeny, víceřádková poznámka v chybě přepsané na jeden řádek, nedělitelná mezera
+  // v názvu). Delší napřed – kratší text uvnitř delšího by ho rozbil.
+  // corpus = všechen text, ve kterém se bude hledat (diagnostika: celý log a stav) – vzory se omezí na ty, které
+  // v něm jsou, ať se stovky názvů z Mých nákupů nezkouší na každém řetězci zvlášť
+  const HIDER_CHUNK = 100; // Kolik textů v jednom regulárním výrazu
+  const escapeRegExp = (text) => text.replace(/[\\^$.*+?()[\]{}|/]/g, "\\$&");
+  function createTextHider(sensitive, corpus = null) {
+    const squash = (text) => text.replace(/\s+/g, " ").trim();
+    const fold = (text) => squash(text).toLowerCase();
+    let texts = [...new Set((Array.isArray(sensitive) ? sensitive : []).filter((item) => typeof item === "string").map(squash))].filter((item) => item.length >= 3);
+    if (typeof corpus === "string") {
+      const haystack = fold(corpus);
+      texts = texts.filter((item) => haystack.includes(fold(item)));
+    }
+    texts.sort((a, b) => b.length - a.length);
+    const patterns = [];
+    for (let index = 0; index < texts.length; index += HIDER_CHUNK) {
+      const words = texts.slice(index, index + HIDER_CHUNK).map((item) => item.split(" ").map(escapeRegExp).join("\\s+"));
+      patterns.push(new RegExp(words.join("|"), "giu"));
+    }
+    return (text) => patterns.reduce((result, pattern) => result.replace(pattern, "…"), String(text));
   }
 
   // Citlivé texty z úložiště pro redactForReport: slevové kódy a názvy koupeného zboží (hlídání po nákupu, připomínky
   // cashbacku, Moje nákupy). SENSITIVE_KEYS = klíče, které si volající musí z úložiště načíst
-  const SENSITIVE_KEYS = [keys.codes, keys.purchases, keys.cashbackReminders, keys.owned];
+  const SENSITIVE_KEYS = [keys.codes, keys.purchases, keys.cashbackReminders, keys.owned, keys.vouchers, keys.notes];
   function getSensitiveTexts(all) {
     const values = (key) => (isPlainObject(all?.[key]) ? Object.values(all[key]).filter(isPlainObject) : []);
     return [
       ...values(keys.codes).map((entry) => entry.code),
+      ...values(keys.vouchers).flatMap((entry) => [entry.code, entry.note]),
+      ...values(keys.notes).map((entry) => entry.text),
       ...values(keys.purchases).map((entry) => entry.name),
       ...values(keys.cashbackReminders).flatMap((entry) => [entry.name, entry.title]),
       ...values(keys.owned).map((entry) => entry.name),
@@ -199,8 +284,11 @@ const OptionsData = (() => {
   //  - produkt hlídaný jen kvůli nákupu (items[] s purchaseOnly: true) – název a adresa se nahradí zástupným textem;
   //    stav posledního běhu (changes, problems, recent…) příznak nenese, proto se v něm skryje stejný produkt
   //    (podle klíče produktu z adresy),
-  //  - z logu chyb pryč číslo objednávky (zdroj chyby ze stránky detailu objednávky) a citlivé texty (sensitive –
-  //    slevové kódy a názvy koupeného zboží z getSensitiveTexts); adresy v chybách zůstávají, podle nich se chyba hledá.
+  //  - zboží hlídané a zároveň koupené zůstává (uživatel ho hlídá sám), ale bez údajů o nákupu: vnořený záznam nákupu
+  //    (purchase) se zahodí u každé položky logu i stavu a řádek „Koupili jste za…“ se u něj skryje,
+  //  - z logu, stavu i chyb pryč citlivé texty (sensitive – slevové kódy, poukazy, poznámky a názvy koupeného zboží
+  //    z getSensitiveTexts), z chyb i číslo objednávky (zdroj chyby ze stránky detailu objednávky); adresy v chybách
+  //    zůstávají, podle nich se chyba hledá.
   // Vrací { watchLog (celý, od nejnovějšího), watchState, errors }
   const PURCHASED_NAME = "(koupené zboží)";
   const HIDDEN_TEXT = "(skryto)";
@@ -217,29 +305,62 @@ const OptionsData = (() => {
     };
     const runs = list(watchLog).filter(isPlainObject);
     const isPurchaseOnly = (item) => isPlainObject(item) && item.purchaseOnly === true;
+    // Klíče zboží hlídaného jen kvůli nákupu z logu i ze stavu (poslední změny, odložené notifikace, deník) –
+    // stav drží položky déle než log (posledních N běhů), skrytí nesmí záviset na tom, jestli běh v logu ještě je
+    const stateItems = isPlainObject(watchState) ? Object.values(watchState).filter(Array.isArray).flat() : [];
     const hiddenKeys = new Set(
-      runs
-        .flatMap((run) => list(run.items))
+      [...runs.flatMap((run) => list(run.items)), ...stateItems]
         .filter(isPurchaseOnly)
-        .map((item) => toKey(item.url))
+        .map((item) => (isText(item.key) ? item.key : toKey(item.url)))
         .filter(Boolean)
     );
     const isHidden = (item) => isPurchaseOnly(item) || (isPlainObject(item) && (hiddenKeys.has(item.key) || (isText(item.url) && hiddenKeys.has(toKey(item.url)))));
 
     // Název a adresa pryč i z textů položky (řádky změn, problém)
+    // Do hloubky: položka deníku běhu je celý produkt i s vnořeným purchase { name, url, image } – název, adresa,
+    // klíč a obrázek pryč na každé úrovni, jejich text i z ostatních řetězců
+    const identityFields = ["name", "url", "key", "listUrl", "image"];
+    const collectSecrets = (value, found = []) => {
+      if (Array.isArray(value)) value.forEach((entry) => collectSecrets(entry, found));
+      else if (isPlainObject(value)) {
+        identityFields.forEach((field) => isText(value[field]) && found.push(value[field]));
+        Object.values(value).forEach((entry) => typeof entry === "object" && collectSecrets(entry, found));
+      }
+      return found;
+    };
     const hideItem = (item) => {
-      const secrets = [item.name, item.url].filter(isText).sort((a, b) => b.length - a.length);
-      const clean = (value) => {
-        if (Array.isArray(value)) return value.map(clean);
+      const secrets = [...new Set(collectSecrets(item))].sort((a, b) => b.length - a.length);
+      const clean = (value, nested = false) => {
+        if (Array.isArray(value)) return value.map((entry) => clean(entry, true));
+        if (isPlainObject(value)) {
+          return Object.fromEntries(
+            Object.entries(value).map(([field, entry]) => [field, nested && identityFields.includes(field) ? (field === "image" ? null : HIDDEN_TEXT) : clean(entry, true)])
+          );
+        }
         return typeof value === "string" ? secrets.reduce((text, secret) => text.split(secret).join("…"), value) : value;
       };
-      const result = Object.fromEntries(Object.entries(item).map(([field, value]) => [field, clean(value)]));
+      const result = clean(item);
       Object.assign(result, { name: PURCHASED_NAME, url: HIDDEN_TEXT });
       if ("key" in result) result.key = HIDDEN_TEXT;
       if ("image" in result) result.image = null;
       return result;
     };
-    const hideItems = (items) => items.map((item) => (isHidden(item) ? hideItem(item) : item));
+    // Zboží hlídané a zároveň koupené zůstává jménem – řádek „Koupili jste za X, teď stojí Y. Vrátit… do D.“
+    // (notifyPurchaseDrop, všechny jazyky textů) u něj proto skrýt celý i s druhem změny v deníku běhu
+    // ({ kind: "purchase", text }). U zboží hlídaného jen kvůli nákupu řádek zůstává – položka je beze jména.
+    // Pozná se podle začátku věty po druhou částku („Koupili jste za X, teď stojí “) – konec věty se mezi verzemi
+    // měnil („do“ → „nejméně do“) a log drží i starší běhy
+    const purchaseLines = ["cz", "sk", "hu", "en"].map((lang) => {
+      const parts = AlzaCore.translate(lang, "notifyPurchaseDrop", "\u0001", "\u0001", "\u0001").split("\u0001");
+      return new RegExp(parts.slice(0, 2).map(escapeRegExp).join(".+?"));
+    });
+    const hidePurchaseLines = (value) => {
+      if (typeof value === "string") return purchaseLines.some((pattern) => pattern.test(value)) ? HIDDEN_TEXT : value;
+      if (Array.isArray(value)) return value.map(hidePurchaseLines);
+      if (!isPlainObject(value)) return value;
+      return Object.fromEntries(Object.entries(value).map(([field, entry]) => [field, field === "kind" && entry === "purchase" ? HIDDEN_TEXT : hidePurchaseLines(entry)]));
+    };
+    const hideItems = (items) => items.map((item) => (isHidden(item) ? hideItem(item) : hidePurchaseLines(item)));
     // Nové nákupy: jen počty (added / removed jsou názvy)
     const hideOrders = (entry) => {
       if (!isPlainObject(entry) || entry.orders !== true) return entry;
@@ -251,20 +372,42 @@ const OptionsData = (() => {
           Object.entries(watchState).map(([field, value]) => {
             if (!Array.isArray(value)) return [field, value];
             // unseen = klíče produktů, ostatní pole = položky s názvem a adresou
-            return [field, value.map((item) => (typeof item === "string" ? (hiddenKeys.has(item) ? HIDDEN_TEXT : item) : isHidden(item) ? hideItem(item) : item))];
+            return [field, value.map((item) => (typeof item === "string" ? (hiddenKeys.has(item) ? HIDDEN_TEXT : item) : isHidden(item) ? hideItem(item) : hidePurchaseLines(item)))];
           })
         )
       : null;
 
-    const hideSensitive = createTextHider(sensitive);
+    // Citlivé texty (názvy koupeného zboží, kódy, poznámky) pryč ze všech řetězců logu i stavu, nejen z chyb –
+    // i u zboží, které uživatel hlídá a zároveň koupil (řádek „Název: koupili jste za…“, název v seznamu změn)
+    const collectTexts = (value, found = []) => {
+      if (typeof value === "string") found.push(value);
+      else if (Array.isArray(value)) value.forEach((entry) => collectTexts(entry, found));
+      else if (isPlainObject(value)) Object.values(value).forEach((entry) => collectTexts(entry, found));
+      return found;
+    };
+    const hideSensitive = createTextHider(sensitive, collectTexts([runs, watchState, errors]).join("\n"));
+    // Vnořený záznam nákupu (deník běhu nese celý produkt i s purchase { name, price, count, boughtAt, buys… }) pryč
+    // u každé položky a na každé úrovni – příznak purchaseOnly nenese zboží hlídané i jinak
+    const scrub = (value) => {
+      if (typeof value === "string") return hideSensitive(value);
+      if (Array.isArray(value)) return value.map(scrub);
+      if (!isPlainObject(value)) return value;
+      return Object.fromEntries(
+        Object.entries(value)
+          .filter(([field, entry]) => !(field === "purchase" && entry !== null && typeof entry === "object"))
+          .map(([field, entry]) => [field, scrub(entry)])
+      );
+    };
     const hideOrderNumber = (text) => (typeof text === "string" ? hideSensitive(text.replace(/(order-details-)\d+/gi, "$1…")) : text);
     return {
-      watchLog: runs.map((run) => ({
-        ...run,
-        ...(Array.isArray(run.items) ? { items: hideItems(run.items) } : {}),
-        ...(Array.isArray(run.lists) ? { lists: run.lists.map(hideOrders) } : {}),
-      })),
-      watchState: state,
+      watchLog: runs.map((run) =>
+        scrub({
+          ...run,
+          ...(Array.isArray(run.items) ? { items: hideItems(run.items) } : {}),
+          ...(Array.isArray(run.lists) ? { lists: run.lists.map(hideOrders) } : {}),
+        })
+      ),
+      watchState: scrub(state),
       errors: list(errors).map((entry) => (isPlainObject(entry) ? { ...entry, source: hideOrderNumber(entry.source), message: hideOrderNumber(entry.message) } : entry)),
     };
   }
@@ -313,6 +456,10 @@ const OptionsData = (() => {
     toImportImage,
     sanitizeProductMap,
     sanitizeCashbackReminders,
+    sanitizeVouchers,
+    sanitizeNotes,
+    sanitizeHidden,
+    sanitizeHiddenBrands,
     SETTING_RANGES,
     sanitizeSettings,
     redactForReport,

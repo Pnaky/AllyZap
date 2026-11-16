@@ -20,13 +20,23 @@ def tag(src):
     return f'<script src="{html.escape(src)}"></script>'
 
 
+UTF8_BOM = b"\xef\xbb\xbf"
+
+# Testovací soubory (kopie v <work>) potřebují značku UTF-8 stejně jako skripty rozšíření (prepare.py)
+for name in ("mock-safari.js", "background.test.js", "welcome.test.js", "pages.test.js"):
+    path = work / name
+    data = path.read_bytes()
+    if not data.startswith(UTF8_BOM):
+        path.write_bytes(UTF8_BOM + data)
+
+# Jako _generated_background_page.html v Safari: bez deklarace kódování – skript bez značky UTF-8 se pak
+# přečte špatně a test to odhalí
 background = "\n".join(
     [
         "<!doctype html>",
-        '<meta charset="utf-8">',
         "<title>Safari background test</title>",
         "<script>window.__FAKE_TIMERS__ = true;</script>",
-        manifest_script,
+        f"<script>window.__MANIFEST__ = {json.dumps(manifest, ensure_ascii=True)};</script>",
         tag("mock-safari.js"),
         *(tag(f"ext/{script}") for script in manifest["background"]["scripts"]),
         tag("background.test.js"),
@@ -41,3 +51,16 @@ welcome = welcome[:first_script] + manifest_script + "\n    " + tag("../../../mo
 end = welcome.rindex("</body>")
 welcome = welcome[:end] + "  " + tag("../../../welcome.test.js") + "\n  " + welcome[end:]
 (ext / "src/welcome/welcome-test.html").write_text(welcome, encoding="utf-8")
+
+# Ostatní stránky rozšíření (pages.test.js): <stránka>-pages-test.html vedle originálu, ať platí relativní cesty.
+# Napodobenina API před první skript stránky, test na konec. Průvodce je už upravený pro Safari (prepare.py)
+PAGES = ["src/options/options.html", "src/popup/popup.html", "src/welcome/welcome.html",
+         "src/help/help.html", "src/help/help-sk.html", "src/help/help-hu.html", "src/help/help-en.html"]
+for relative in PAGES:
+    source = ext / relative
+    text = source.read_text(encoding="utf-8")
+    first = text.index("<script src=")
+    text = text[:first] + manifest_script + "\n    " + tag("../../../mock-safari.js") + "\n    " + text[first:]
+    end = text.rindex("</body>")
+    text = text[:end] + "  " + tag("../../../pages.test.js") + "\n  " + text[end:]
+    source.with_name(source.stem + "-pages-test.html").write_text(text, encoding="utf-8")

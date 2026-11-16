@@ -1,6 +1,7 @@
 // Sdílí aplikace (Vyzkoušet notifikaci, kliknutí na notifikaci) i rozšíření (SafariWebExtensionHandler).
-// Notifikace zobrazuje macOS jménem aplikace Alza Price Insight – rozšíření v Safari API notifikací nemají.
+// Notifikace zobrazuje macOS jménem aplikace AllyZap – rozšíření v Safari API notifikací nemají.
 
+import AppKit
 import Foundation
 import UserNotifications
 
@@ -21,7 +22,10 @@ enum AlzaShared {
 
     /// Klíč adresy produktu v userInfo notifikace
     static let urlKey = "alzaURL"
-    static let threadIdentifier = "alza-price-insight"
+    static let threadIdentifier = "allyzap"
+    /// Rozšíření → aplikace: kliknutí na notifikaci obsloužilo rozšíření (macOS kliknutí doručí procesu, který
+    /// notifikaci vytvořil, a k tomu spustí aplikaci – ta pak okno neukazuje). Bez dat, jen událost
+    static let clickedSignal = Notification.Name("AllyZap.notificationClicked")
 
     /// Texty aplikace česky (i pro slovenštinu), jinak anglicky
     static let czech: Bool = {
@@ -31,6 +35,44 @@ enum AlzaShared {
 
     static func text(_ czechText: String, _ englishText: String) -> String {
         czech ? czechText : englishText
+    }
+
+    /// Adresa Alzy vždy v Safari, ne ve výchozím prohlížeči (ten může být jiný – rozšíření je jen v Safari);
+    /// bez adresy jen přepne do Safari
+    static func openInSafari(_ url: URL?) {
+        let workspace = NSWorkspace.shared
+        guard let safari = workspace.urlForApplication(withBundleIdentifier: "com.apple.Safari") else {
+            if let url { workspace.open(url) }
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        if let url {
+            workspace.open([url], withApplicationAt: safari, configuration: configuration) { _, error in
+                if error != nil { DispatchQueue.main.async { workspace.open(url) } }
+            }
+        } else {
+            workspace.openApplication(at: safari, configuration: configuration, completionHandler: nil)
+        }
+    }
+
+    /// Identifikátor aplikace i z rozšíření (appex je <aplikace>.Extension) – pod ním jsou její oznámení v Nastavení systému
+    static var appBundleIdentifier: String {
+        let own = Bundle.main.bundleIdentifier ?? ""
+        return own.hasSuffix(".Extension") ? String(own.dropLast(".Extension".count)) : own
+    }
+
+    /// Nastavení systému → Oznámení → AllyZap (tlačítko v okně aplikace i v nastavení a průvodci rozšíření).
+    /// Novější macOS má jinou adresu panelu než starší – zkusit obě
+    static func openNotificationSettings() {
+        let id = appBundleIdentifier
+        let candidates = [
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)",
+            "x-apple.systempreferences:com.apple.preference.notifications?id=\(id)",
+        ]
+        for candidate in candidates {
+            if let url = URL(string: candidate), NSWorkspace.shared.open(url) { return }
+        }
     }
 }
 
@@ -70,7 +112,7 @@ enum AlzaNotifications {
         center.getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .denied:
-                completion("notifications are turned off for Alza Price Insight in System Settings → Notifications")
+                completion("notifications are turned off for AllyZap in System Settings → Notifications")
             case .notDetermined:
                 requestAuthorization { granted, error in
                     guard granted else {

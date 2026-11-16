@@ -72,6 +72,7 @@ const AlzaPriceTracker = {
     priceRecords: new Map(), // Záznamy cen (klíč produktu → záznam) načtené pro stránku; obnovuje storage.onChanged
     urlObserver: null, // Jediný observer pro sledování změn URL
     itemsObserver: null, // Čekání na vykreslení položek seznamu
+    emptyListTimer: null, // Kontrola opravdu prázdného seznamu (reloadPrices)
     inFlightItems: new WeakSet(), // Položky, pro které právě probíhá načítání (prevence duplicit)
     historyTriggers: new WeakSet(), // Prvky s listenerem pro otevření historie
     noPriceUrls: new Set(), // Neprodávané produkty – prázdná cena u nich není chybějící cena k dotažení
@@ -119,7 +120,7 @@ const AlzaPriceTracker = {
     // Firefox po aktualizaci rozšíření vloží skript do otevřené stránky znovu – plovoucí prvky předchozí verze
     // (karta tooltipu, bublina množstevní slevy, upozornění u košíku) by zůstaly viset bez posluchačů
     document
-      .querySelectorAll(".alza-price-tracker-price-card, .alza-price-tracker-tiers-bubble, .alza-price-tracker-cart-warning")
+      .querySelectorAll(".alza-price-tracker-price-card, .alza-price-tracker-tiers-bubble, .alza-price-tracker-cart-warning, .alza-price-tracker-vouchers")
       .forEach((element) => element.remove());
     // Jinde (výpisy kategorií, vyhledávání, úvodní stránka) jen naše tooltipy – štítky ceny za kus a lišta
     // kategorie (category.js) mají nápovědu v title; místo systémového tooltipu karta jako na seznamu
@@ -169,6 +170,7 @@ const AlzaPriceTracker = {
         this.setupPriceCards();
         this.setupBasketCodes();
         this.setupBasketInsights();
+        this.setupBasketVouchers();
         this.watchPriceRecords();
         this.removeLegacyPriceChanges().catch((error) => console.error("Error removing legacy keys:", error));
       } else {
@@ -439,6 +441,7 @@ const AlzaPriceTracker = {
     // observery hromadily a po vykreslení položek zpracovaly seznam vícekrát
     this.state.itemsObserver?.disconnect();
     this.state.itemsObserver = null;
+    clearTimeout(this.state.emptyListTimer);
 
     if (items.length > 0) {
       this.processItems(items, listId, syncWatched);
@@ -454,6 +457,17 @@ const AlzaPriceTracker = {
 
       observer.observe(document.body, { childList: true, subtree: true });
       this.state.itemsObserver = observer;
+      // Seznam, ze kterého uživatel odebral všechno: po ustálení stránky stále bez položek a záložka ukazuje „(0)“ –
+      // hlídaný seznam se vyprázdní (jinak by se dál hlídaly produkty, které v něm už nejsou). Jen přihlášenému
+      // a když se vybraná záložka jmenuje jako hlídaný seznam (syncWatchedList → isOwnEmptyList) – adresa s listId
+      // hlídaného seznamu může ukazovat cizí prázdnou záložku
+      if (syncWatched) {
+        this.state.emptyListTimer = setTimeout(() => {
+          if (this.state.itemsObserver !== observer || document.querySelectorAll(this.selectors.listItem).length > 0) return;
+          if (this.getSelectedListCount() !== 0) return;
+          this.syncWatchedList(listId, { allowEmpty: true }).catch((error) => console.error("Error syncing watched list:", error));
+        }, AlzaCore.emptyListSettleMs);
+      }
     }
   },
 
@@ -554,7 +568,7 @@ const AlzaPriceTracker = {
     }
     if (!page.ok || !page.isProduct) {
       // Trvalá chyba – opakování nepomůže (404, přihlášení / captcha místo detailu…)
-      console.warn(`Alza Price Insight – produkt nejde načíst (${page.error || "není detail produktu"}): ${productUrl}`);
+      console.warn(`AllyZap – produkt nejde načíst (${page.error || "není detail produktu"}): ${productUrl}`);
       this.state.noPriceUrls.add(productUrl); // Doplňování chybějících cen by ho jinak stahovalo znovu každých pár sekund
       this.removeSpinnerFromItem(itemElement);
       this.updateLoadingNotification();
@@ -569,7 +583,7 @@ const AlzaPriceTracker = {
       return { skipped: true };
     }
 
-    const { prices, name, packCount, quantityTiers, conditions } = page;
+    const { prices, name } = page;
     // Dostupnost z řádku jen když v něm je pořád tentýž produkt (stahování trvá, React mezitím mohl řádek použít
     // pro jiný) – null = beze změny
     const availability = itemElement.querySelector(this.selectors.productLink)?.href === productUrl ? this.getAvailabilityCode(itemElement) : null;
@@ -590,11 +604,11 @@ const AlzaPriceTracker = {
       return { noPrice: true };
     }
 
-    // Počet kusů a množstevní slevy se ukládají jako metaúdaje záznamu (bez historie). Počet kusů, který detail
-    // tentokrát nemá, zůstane původní; množstevní slevy a ceny jiných stavů se přepíšou vždy (null je smaže)
+    // Počet kusů, množstevní slevy a ceny jiných stavů se ukládají jako metaúdaje záznamu (bez historie) – stejně
+    // jako při kontrole na pozadí (AlzaCore.getPageRecordInput)
     let savedRecord;
     try {
-      const oldPrices = await this.savePricesToStorage({ [productUrl]: { ...prices, ...(packCount && { packCount }), quantityTiers, conditions } }, listId);
+      const oldPrices = await this.savePricesToStorage({ [productUrl]: AlzaCore.getPageRecordInput(page) }, listId);
       recordHistory(prices, oldPrices);
       savedRecord = this.state.savedRecords.get(productUrl) || null;
       this.state.savedRecords.delete(productUrl);
@@ -904,8 +918,9 @@ const AlzaPriceTracker = {
       }
 
       // Stejný produkt v jiném stavu (rozbalený, zánovní) levněji
-      // Proti nejnižší ceně, kterou zaplatíte (i s AlzaPlus+ a benefitem) – jinak by „levnější“ stav často nebyl levnější
-      const ownLowest = AlzaCore.getPlausibleMinPrice(Object.fromEntries(formattedPrices.map(({ type, price }) => [type, price])));
+      // Proti nejnižší ceně, kterou zaplatíte (i s AlzaPlus+ a benefitem) – jinak by „levnější“ stav často nebyl levnější.
+      // Bez cashbacku a výkupu: ty se vrací až po nákupu a rozbalený kus je může mít také
+      const ownLowest = AlzaCore.getPlausiblePayNowPrice(Object.fromEntries(formattedPrices.map(({ type, price }) => [type, price])));
       const cheaperConditions = AlzaCore.getCheaperConditions(productData.conditions, ownLowest);
       if (cheaperConditions.length > 0 && lowestElement) {
         const conditionsText = this.getCheaperConditionsText(cheaperConditions);
